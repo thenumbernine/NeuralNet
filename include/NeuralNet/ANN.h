@@ -7,12 +7,13 @@ runtime-sized ANN, runtime-sized matrix
 #include <vector>
 #include <functional>
 #include <cassert>
+#include <cstring>
+
+namespace NeuralNet {
 
 inline int roundup4(int a) {
 	return (a + 3) & (-4);
 }
-
-namespace NeuralNet {
 
 template<typename Real>
 struct Vector {
@@ -151,6 +152,11 @@ public:
 	}
 };
 
+//TODO something from stl 
+#include <stdlib.h>	//rand()
+template<typename Real = double>
+Real random() { return (Real)rand() / (Real)RAND_MAX; }
+
 template<typename Real = double>
 struct ANN {
 	using Vector = NeuralNet::Vector<Real>;
@@ -165,33 +171,42 @@ struct ANN {
 
 	Real dt = 1;
 
+	int useBatch = 0;	// set to a positive value to accumulate batch weight updates into the dw array
+	int batchCounter = 0;
+	int totalBatchCounter = 0;	//for entertainment
+
+	//would be nice to just initialize a member-ref to layers[0].x
+	// but to od that, i'd need to initialize layers[] in the ctor member list
+	// and to do that I'd need t initialize layers[] alongside output, outputError, desired
+	// and to do that I'd need something like ctor-member-initialization structure-binding
+	// and that's not allowed yet afaik ...
+	Vector & input() { return layers[0].x; }
+	Vector & inputError() { return layers[0].xErr; }
+
 	ANN(std::initializer_list<int> layerSizes) {
 		auto layerSizeIter = layerSizes.begin();
 		auto prevLayerSize = *layerSizeIter;
 		for (++layerSizeIter; layerSizeIter != layerSizes.end(); ++layerSizeIter) {
-			layers.emplace_back(prevLayerSize, *layerSizeIter);
+			auto & layer = layers.emplace_back(prevLayerSize, *layerSizeIter);
 			prevLayerSize = *layerSizeIter;
+		
+			// default weight initialization ...
+			for (int i = 0; i < layer.w.height(); ++i) {
+				for (int j = 0; j < layer.w.width(); ++j) {
+					layer.w[i][j] = random<Real>() * 2. - 1.;
+				}
+			}
+
 		}
 		// final layer
 		output = Vector(prevLayerSize);
 		outputError = Vector(prevLayerSize);
 		desired = Vector(prevLayerSize);
+	
 	}
-
-	// TODO can this default into the initializer_list ctor?
-	ANN(std::vector<int> layerSizes) {
-		for (int i = 0; i < (int)layerSizes.size()-1; ++i) {
-			layers.emplace_back(layerSizes[i], layerSizes[i+1]);
-		}
-		output = Vector(layerSizes.back());
-		outputError = Vector(layerSizes.back());
-		desired = Vector(layerSizes.back());
-	}
-
-	Vector & input() { return layers[0].x; }
 
 	void feedForward() {
-		int numLayers = (int)layers.size();
+		int const numLayers = (int)layers.size();
 		for (int k = 0; k < numLayers; ++k) {
 			auto & layer = layers[k];
 			
@@ -217,7 +232,7 @@ struct ANN {
 			assert(y.storageSize == net.storageSize);
 			assert(y.storageSize == roundup4(storageHeight+1));
 		
-			auto & activation = layer.activation;
+			auto const & activation = layer.activation;
 			auto wij = w.v.data();
 			auto xptr = x.v.data();
 			auto xendptr = xptr + storageWidth;
@@ -246,8 +261,89 @@ struct ANN {
 		}
 	}
 
+	Real calcError() {
+		assert(desired.size == outputError.size);
+		Real s = {};
+		for (int i = 0; i < outputError.size; ++i) {
+			auto delta = desired[i] - output[i];
+			outputError[i] = delta;
+			s += delta * delta;
+		}
+		return .5 * s;
+	}
+
 	void backPropagate() { backPropagate(dt); }
 	void backPropagate(Real dt) {
+		int const numLayers = (int)layers.size();
+		for (int k = (int)numLayers-1; k >= 0; --k) {
+			auto & layer = layers[k];
+			auto & y = k == numLayers-1 ? output : layers[k+1].x;
+			auto & yErr = k == numLayers-1 ? outputError : layers[k+1].xErr;
+			auto const & activationDeriv = layer.activationDeriv;
+			assert(layer.netErr.size == y.size);
+			for (int i = 0; i < y.size; ++i) {
+				layer.netErr[i] = yErr[i] * activationDeriv(layer.net[i], y[i]);
+			}
+			// back-propagate error
+			for (int j = 0; j < layer.x.size; ++j) {
+				Real s = {};
+				for (int i = 0; i < layer.netErr.size; ++i) {
+					s += layer.w[i][j] * layer.netErr[i];
+				}
+				layer.xErr[j] = s;
+			}
+
+			// adjust new weights
+			assert(layer.x[layer.x.size] == layer.getBias() ? 1 : 0);
+			if (!useBatch) {
+				// ... directly/immediately
+				for (int i = 0; i < layer.w.height(); ++i) {
+					auto const l = layer.x.size;
+					for (int j = 0; j <= l; ++j) {
+						layer.w[i][j] += dt * layer.netErr[i] * layer.x[j];
+					}
+				}
+			} else {
+				// ... accumulate into dw
+				for (int i = 0; i < layer.w.height(); ++i) {
+					auto const l = layer.x.size;
+					for (int j = 0; j <= l; ++j) {
+						layer.dw[i][j] += dt * layer.netErr[i] * layer.x[j];
+					}
+				}
+			}
+		}
+		if (useBatch) {
+			++totalBatchCounter;
+			++batchCounter;
+			if (batchCounter >= useBatch) {
+				updateBatch();
+				batchCounter = 0;
+			}
+		}
+	}
+
+	// update weights by batch ... and then clear the batch
+	void updateBatch() {
+		if (!useBatch) return;
+		for (int k = (int)layers.size()-1; k >= 0; --k) {
+			auto & layer = layers[k];
+			for (int i = 0; i < layer.w.height(); ++i) {
+				auto const l = layer.x.size;
+				for (int j = 0; j <= l; ++j) {
+					layer.w[i][j] += layer.dw[i][j];
+				}
+			}
+		}
+		clearBatch();
+	}
+
+	void clearBatch() {
+		if (!useBatch) return;
+		for (int k = (int)layers.size()-1; k >= 0; --k) {
+			auto & layer = layers[k];
+			std::memset(layer.dw.v.data(), 0, sizeof(Real) * layer.dw.v.size());
+		}
 	}
 };
 

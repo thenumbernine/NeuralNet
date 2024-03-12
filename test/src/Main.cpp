@@ -39,18 +39,20 @@ void accuracy() {
 
 	nn.desired.v[0] = src();
 	nn.desired.v[1] = src();
-//	nn.backPropagate();
-	// now i'm trying to find a meaningful value from the back-propagation ...
+	std::cout << "desired " << nn.desired << std::endl;
+	std::cout << "desired L1 norm " << nn.desired.normL1() << std::endl;
+	nn.calcError();
+	nn.backPropagate();
+	std::cout << "input error " << nn.inputError() << std::endl;
+	std::cout << "input error L1 norm " << nn.inputError().normL1() << std::endl;
 }
 
 #include "Common/Profile.h"
-#include <stdlib.h>	//rand() .. TODO use stl?
 void performance() {
-	auto random = []() -> double { return (double)rand() / (double)RAND_MAX; };
 	auto nn = NeuralNet::ANN{222, 80, 40, 2};
 
 	for (int i = 0; i < nn.input().size; ++i) {
-		nn.input().v[i] = random();
+		nn.input().v[i] = NeuralNet::random();
 	}
 
 	int numIter = 10000;
@@ -62,6 +64,6 @@ void performance() {
 }
 
 int main() {
-//	accuracy();
-	performance();
+	accuracy();
+//	performance();
 }

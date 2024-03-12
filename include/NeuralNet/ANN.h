@@ -140,54 +140,23 @@ struct ANN {
 			auto netiend = neti + height;
 			auto yi = y.v.data();
 			auto const biasSignal = useBias ? 1 : 0;
-
+			for (; neti < netiend; 
+				++neti, ++yi
+			) {
 				// hmm TODO pad matrices to be 4 real aligned?
-			if (width == 1) {
-				if (useBias) {
-					for (; neti < netiend; 
-						++neti, ++yi
-					) {				
-						*neti = wij[0];
-						++wij;
-						*yi = activation(*neti);
-					}
-				} else {
-					*neti = 0;
-					*yi = activation(0);
-				}
-			} else if (width == 2) {
-				if (useBias) {
-					for (; neti < netiend; 
-						++neti, ++yi
-					) {				
-						*neti = wij[0] * xptr[0]
-							+ wij[1];
-						wij += 2;
-						*yi = activation(*neti);
-					}
-				} else {
-					for (; neti < netiend; 
-						++neti, ++yi
-					) {				
-						*neti = wij[0] * xptr[0];
-						wij += 2;
-						*yi = activation(*neti);
-					}
-				}
-			} else if (width == 3) {
-				for (; neti < netiend; 
-					++neti, ++yi
-				) {				
+				if (width == 1) {
+					*neti = wij[0] * biasSignal;
+					++wij;
+				} else if (width == 2) {
+					*neti = wij[0] * xptr[0]
+						+ wij[1] * biasSignal;
+					wij += 2;
+				} else if (width == 3) {
 					*neti = wij[0] * xptr[0]
 						+ wij[1] * xptr[1]
 						+ wij[2] * biasSignal;
 					wij += 3;
-					*yi = activation(*neti);
-				}
-			} else { 
-				for (; neti < netiend; 
-					++neti, ++yi
-				) {				
+				} else { 
 					auto xj = xptr;
 					
 					*neti += wij[0] * xj[0]
@@ -216,8 +185,8 @@ struct ANN {
 					assert(xj == xendptr);
 					*neti += *wij * biasSignal;
 					++wij;
-					*yi = activation(*neti);
 				}
+				*yi = activation(*neti);
 			}
 			assert(neti == net.v.data() + height);
 			assert(yi == y.v.data() + height);

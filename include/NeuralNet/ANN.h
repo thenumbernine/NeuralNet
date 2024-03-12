@@ -8,18 +8,40 @@ runtime-sized ANN, runtime-sized matrix
 #include <functional>
 #include <cassert>
 
+inline int roundup4(int a) {
+	return (a + 3) & (-4);
+}
+
 namespace NeuralNet {
 
 template<typename Real>
 struct Vector {
+	
+	// size = layer size
+	// so 'size+1' padding is always present and assigned to the bias
 	int size = {};
+	
+	// storageSize = (size+1) roundup 4
+	//		== v.size() when v is a std::vector
+	int storageSize = {};
+	
 	std::vector<Real> v;
+	
 	Vector() {}
-	Vector(int size_) : size(size_), v(size) {}
+	
+	Vector(int size_)
+	:	size(size_),
+		storageSize(roundup4(size+1)),
+		v(storageSize)
+	{}
+	
 	Real normL1() const {
-		Real sum = {};
-		for (auto vi : v) {
-			sum += fabs(vi);
+		auto vi = v.data();
+		auto vend = vi + size;
+		Real sum = fabs(*vi);
+		++vi;
+		for (; vi < vend; ++vi) {
+			sum += fabs(*vi);
 		}
 		return sum;
 	}
@@ -32,15 +54,34 @@ std::ostream & operator<<(std::ostream & o, Vector<T> const & v) {
 
 template<typename Real>
 struct Matrix {
+	
 	Tensor::int2 size = {};
-	std::vector<Real> v;	// values stored row-major
+	
+	Tensor::int2 storageSize = {};
+	
+	std::vector<Real> v;	// values stored row-major, size is 'storageSize'
+	
 	Matrix() {}
-	Matrix(Tensor::int2 size_) : size(size_), v(size.product()) {}
-	Matrix(int h, int w) : size(h, w), v(h * w) {}
+	
+	Matrix(int h, int w)
+	:	size(h, w),
+		storageSize(h, roundup4(w)),
+		v(storageSize.product())
+	{}
+	
 	Real normL1() const {
+		auto [height, width] = size;
+		auto [storageHeight, storageWidth] = storageSize;
+		assert(height == storageHeight);
 		Real sum = {};
-		for (auto vi : v) {
-			sum += fabs(vi);
+		int ij = 0;
+		for (int i = 0; i < height; ++i) {
+			int j = 0;
+			for (; j < width; ++j, ++ij) {
+				sum += fabs(v[ij]);
+			}
+			j += storageWidth - width;
+			ij += storageWidth - width;
 		}
 		return sum;
 	}
@@ -62,9 +103,13 @@ struct Layer {
 	Matrix w;				// weights
 	Vector xErr, netErr;	// back-propagation
 	Matrix dw;				// batch training accumulation
-	bool useBias = true;
 	std::function<Real(Real)> activation;				//y(x)
 	std::function<Real(Real, Real)> activationDeriv;	//dy/dx(x,y)
+private:
+	bool useBias = true;
+public:
+	bool getBias() const { return useBias; }
+
 	Layer(int sizeIn, int sizeOut)
 	: 	x(sizeIn),
 		net(sizeOut),
@@ -74,7 +119,10 @@ struct Layer {
 		dw(sizeOut, sizeIn+1),
 		activation(tanh),
 		activationDeriv(tanhDeriv)
-	{}
+	{
+		// welp TODO gonna need a setter for that now 
+		x.v[sizeIn] = useBias ? 1 : 0;
+	}
 };
 
 template<typename Real = double>
@@ -120,77 +168,61 @@ struct ANN {
 		int numLayers = (int)layers.size();
 		for (int k = 0; k < numLayers; ++k) {
 			auto & layer = layers[k];
+			
 			const auto & w = layer.w;
 			auto [height, width] = w.size;
-			const auto & x = layer.x;
-			auto & net = layer.net;
-			auto & y = k == numLayers-1 ? output : layers[k+1].x;
-			const auto useBias = layer.useBias;
 			assert(width > 0);
 			assert(height > 0);
+			auto [storageHeight, storageWidth] = w.storageSize;
+			assert(height == storageHeight);
+			
+			const auto & x = layer.x;
+			assert(x.storageSize == storageWidth);
+			
+			assert(x.v[x.size] == layer.getBias() ? 1 : 0);
+
+			auto & net = layer.net;
+			assert(net.size == height);
+			
 			assert(width == x.size+1);
 			assert(height == net.size);
-			
+
+			auto & y = k == numLayers-1 ? output : layers[k+1].x;
+			assert(y.storageSize == net.storageSize);
+			assert(y.storageSize == roundup4(storageHeight+1));
+		
 			auto & activation = layer.activation;
 			auto wij = w.v.data();
 			auto xptr = x.v.data();
-			auto xendptr = xptr + width - 1;	// minus one to skip bias right-most col
-			auto xendptrminus4 = xendptr - 4;
+			auto xendptr = xptr + storageWidth;
 			auto neti = net.v.data();	//net.v.begin() ? which is faster?
 			auto netiend = neti + height;
 			auto yi = y.v.data();
-			auto const biasSignal = useBias ? 1 : 0;
+			
 			for (; neti < netiend; 
 				++neti, ++yi
 			) {
-				// hmm TODO pad matrices to be 4 real aligned?
-				if (width == 1) {
-					*neti = wij[0] * biasSignal;
-					++wij;
-				} else if (width == 2) {
-					*neti = wij[0] * xptr[0]
-						+ wij[1] * biasSignal;
-					wij += 2;
-				} else if (width == 3) {
-					*neti = wij[0] * xptr[0]
-						+ wij[1] * xptr[1]
-						+ wij[2] * biasSignal;
-					wij += 3;
-				} else { 
-					auto xj = xptr;
-					
+				auto xj = xptr;
+				*neti = wij[0] * xj[0]
+					+ wij[1] * xj[1]
+					+ wij[2] * xj[2]
+					+ wij[3] * xj[3];
+				xj += 4;
+				wij += 4;
+
+				for (; xj < xendptr; 
+					xj += 4, wij += 4
+				) {
 					*neti += wij[0] * xj[0]
 						+ wij[1] * xj[1]
 						+ wij[2] * xj[2]
 						+ wij[3] * xj[3];
-					wij += 4;
-					xj += 4;
-
-#if 1	// runs 3x faster with GCC
-					for (; xj <= xendptrminus4; 
-						xj += 4, wij += 4
-					) {
-						*neti += wij[0] * xj[0]
-							+ wij[1] * xj[1]
-							+ wij[2] * xj[2]
-							+ wij[3] * xj[3];
-					}
-#endif				
-					for (; xj < xendptr; 
-						++xj, ++wij
-					) {
-						*neti += wij[0] * xj[0];
-					}
-
-					assert(xj == xendptr);
-					*neti += *wij * biasSignal;
-					++wij;
 				}
 				*yi = activation(*neti);
 			}
 			assert(neti == net.v.data() + height);
 			assert(yi == y.v.data() + height);
-			assert(wij == w.v.data() + width * height);
+			assert(wij == w.v.data() + storageWidth * height);
 		}
 	}
 

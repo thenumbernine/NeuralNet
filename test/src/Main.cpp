@@ -45,9 +45,9 @@ void accuracy() {
 void performance() {
 	auto random = []() -> double { return (double)rand() / (double)RAND_MAX; };
 	auto nn = NeuralNet::ANN{222, 80, 40, 2};
-	
-	for (auto & xi : nn.input().v) {
-		xi = random();
+
+	for (int i = 0; i < nn.input().size; ++i) {
+		nn.input().v[i] = random();
 	}
 
 	int numIter = 10000;

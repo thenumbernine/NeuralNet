@@ -45,6 +45,9 @@ struct Vector {
 		}
 		return sum;
 	}
+	
+	decltype(auto) operator[](int i) { return v[i]; }
+	decltype(auto) operator[](int i) const { return v[i]; }
 };
 
 template<typename T>
@@ -53,14 +56,34 @@ std::ostream & operator<<(std::ostream & o, Vector<T> const & v) {
 }
 
 template<typename Real>
+struct ThinVec {
+	Real * v = {};
+	int size = {};
+	int storageSize = {};
+	ThinVec(Real * v_, int size_, int storageSize_)
+	:	v(v_),
+		size(size_),
+		storageSize(storageSize_)
+	{}
+	decltype(auto) operator[](int i) { return v[i]; }
+	decltype(auto) operator[](int i) const { return v[i]; }
+};
+
+template<typename Real>
 struct Matrix {
+	using ThinVec = NeuralNet::ThinVec<Real>;
+	using ThinVecConst = NeuralNet::ThinVec<Real const>;
 	
 	Tensor::int2 size = {};
 	
 	Tensor::int2 storageSize = {};
 	
 	std::vector<Real> v;	// values stored row-major, size is 'storageSize'
-	
+
+	int height() const { return size.x; }
+	int width() const { return size.y; }
+	int storageWidth() const { return storageSize.y; }
+
 	Matrix() {}
 	
 	Matrix(int h, int w)
@@ -85,6 +108,9 @@ struct Matrix {
 		}
 		return sum;
 	}
+
+	ThinVec operator[](int const i) { return ThinVec(v.data() + storageWidth() * i, width(), storageWidth()); }
+	ThinVecConst operator[](int const i) const { return ThinVecConst(v.data() + storageWidth() * i, width(), storageWidth()); }
 };
 
 template<typename T>
@@ -203,13 +229,7 @@ struct ANN {
 				++neti, ++yi
 			) {
 				auto xj = xptr;
-				*neti = wij[0] * xj[0]
-					+ wij[1] * xj[1]
-					+ wij[2] * xj[2]
-					+ wij[3] * xj[3];
-				xj += 4;
-				wij += 4;
-
+				*neti = 0;
 				for (; xj < xendptr; 
 					xj += 4, wij += 4
 				) {
@@ -226,9 +246,9 @@ struct ANN {
 		}
 	}
 
+	void backPropagate() { backPropagate(dt); }
 	void backPropagate(Real dt) {
 	}
-	void backPropagate() { backPropagate(dt); }
 };
 
 }

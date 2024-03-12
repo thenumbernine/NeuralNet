@@ -16,12 +16,15 @@ void accuracy() {
 	};
 
 	for (auto & layer : nn.layers) {
-		for (auto & wij : layer.w.v) {
-			wij = src();
+		auto & w = layer.w;
+		for (int i = 0; i < w.height(); ++i) {
+			for (int j = 0; j < w.width(); ++j) {
+				w[i][j] = src();
+			}
 		}
 	}
-	for (auto & xi : nn.input().v) {
-		xi = src();
+	for (int i = 0; i < nn.input().size; ++i) {
+		nn.input()[i] = src();
 	}
 	nn.feedForward();
 	

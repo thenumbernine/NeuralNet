@@ -139,21 +139,63 @@ struct ANN {
 			auto neti = net.v.data();	//net.v.begin() ? which is faster?
 			auto netiend = neti + height;
 			auto yi = y.v.data();
-			for (; neti < netiend; 
-				++neti, ++yi
-			) {
-				if (width == 1) {
-					*neti = useBias ? wij[0] : {};
-					++wij;
-				} else if (width == 2) {
+			auto const biasSignal = useBias ? 1 : 0;
+
+				// hmm TODO pad matrices to be 4 real aligned?
+			if (width == 1) {
+				if (useBias) {
+					for (; neti < netiend; 
+						++neti, ++yi
+					) {				
+						*neti = wij[0];
+						++wij;
+						*yi = activation(*neti);
+					}
+				} else {
+					*neti = 0;
+					*yi = activation(0);
+				}
+			} else if (width == 2) {
+				if (useBias) {
+					for (; neti < netiend; 
+						++neti, ++yi
+					) {				
+						*neti = wij[0] * xptr[0]
+							+ wij[1];
+						wij += 2;
+						*yi = activation(*neti);
+					}
+				} else {
+					for (; neti < netiend; 
+						++neti, ++yi
+					) {				
+						*neti = wij[0] * xptr[0];
+						wij += 2;
+						*yi = activation(*neti);
+					}
+				}
+			} else if (width == 3) {
+				for (; neti < netiend; 
+					++neti, ++yi
+				) {				
 					*neti = wij[0] * xptr[0]
-						+ useBias ? wij[1] : {};
-					wij += 2;
-				} else { 
+						+ wij[1] * xptr[1]
+						+ wij[2] * biasSignal;
+					wij += 3;
+					*yi = activation(*neti);
+				}
+			} else { 
+				for (; neti < netiend; 
+					++neti, ++yi
+				) {				
 					auto xj = xptr;
-					*neti = *wij * *xj;
-					++wij;
-					++xj;
+					
+					*neti += wij[0] * xj[0]
+						+ wij[1] * xj[1]
+						+ wij[2] * xj[2]
+						+ wij[3] * xj[3];
+					wij += 4;
+					xj += 4;
 
 #if 1	// runs 3x faster with GCC
 					for (; xj <= xendptrminus4; 
@@ -172,12 +214,10 @@ struct ANN {
 					}
 
 					assert(xj == xendptr);
-					if (useBias) {
-						*neti += *wij;
-					}
+					*neti += *wij * biasSignal;
+					++wij;
+					*yi = activation(*neti);
 				}
-				++wij;
-				*yi = activation(*neti);
 			}
 			assert(neti == net.v.data() + height);
 			assert(yi == y.v.data() + height);

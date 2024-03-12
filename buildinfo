@@ -1,0 +1,7 @@
+distName='NeuralNet'
+distType='app' --'lib'
+depends:append{
+	'../Common',
+	'../Tensor',
+	--'../LuaCxx', -- TODO Lua bindings eventually
+}

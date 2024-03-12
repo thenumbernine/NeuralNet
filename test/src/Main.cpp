@@ -56,6 +56,15 @@ void performance() {
 	}
 
 	int numIter = 10000;
+	Common::timeFunc("feedForward + backPropagate", [&](){
+		for (int i = 0; i < numIter; ++i) {
+			nn.feedForward();
+			nn.desired[0] = random();
+			nn.desired[0] = random();
+			nn.calcError();
+			nn.backPropagate();
+		}
+	});
 	Common::timeFunc("feedForward only", [&](){
 		for (int i = 0; i < numIter; ++i) {
 			nn.feedForward();
@@ -64,6 +73,6 @@ void performance() {
 }
 
 int main() {
-	accuracy();
-//	performance();
+//	accuracy();
+	performance();
 }

@@ -328,11 +328,13 @@ struct ANN {
 		if (!useBatch) return;
 		for (int k = (int)layers.size()-1; k >= 0; --k) {
 			auto & layer = layers[k];
-			for (int i = 0; i < layer.w.height(); ++i) {
-				auto const l = layer.x.size;
-				for (int j = 0; j <= l; ++j) {
-					layer.w[i][j] += layer.dw[i][j];
-				}
+			auto wijptr = layer.w.v.data();
+			auto wijendptr = wijptr + layer.w.storageSize.product();
+			auto dwijptr = layer.dw.v.data();
+			for (; wijptr < wijendptr; 
+				++wijptr, ++dwijptr
+			) {
+				*wijptr += *dwijptr;
 			}
 		}
 		clearBatch();

@@ -280,35 +280,80 @@ struct ANN {
 			auto & y = k == numLayers-1 ? output : layers[k+1].x;
 			auto & yErr = k == numLayers-1 ? outputError : layers[k+1].xErr;
 			auto const & activationDeriv = layer.activationDeriv;
-			assert(layer.netErr.size == y.size);
-			for (int i = 0; i < y.size; ++i) {
-				layer.netErr[i] = yErr[i] * activationDeriv(layer.net[i], y[i]);
+			auto const height = layer.w.height();
+			assert(height == y.size);
+			assert(height == layer.netErr.size);
+			{
+				auto neti = layer.net.v.data();
+				auto neterri = layer.netErr.v.data();
+				auto neterriend = neterri + height;
+				auto yerri = yErr.v.data();
+				auto yi = y.v.data();
+				for (; neterri < neterriend;
+					++neterri, ++neti, ++yerri, ++yi
+				) {
+					*neterri = *yerri * activationDeriv(*neti, *yi);
+				}
 			}
 			// back-propagate error
-			for (int j = 0; j < layer.x.size; ++j) {
-				Real s = {};
-				for (int i = 0; i < layer.netErr.size; ++i) {
-					s += layer.w[i][j] * layer.netErr[i];
+#if 1
+			{
+				auto xerrj = layer.xErr.v.data();
+				auto xerrjend = xerrj + layer.xErr.size;
+				assert(layer.x.size == layer.xErr.size);
+				assert(layer.x.size == layer.w.width()-1);
+				auto neterrptr = layer.netErr.v.data();
+				auto neterriend = neterrptr + height;
+				auto wi = layer.w.v.data();
+				for (; xerrj < xerrjend; 
+					++xerrj, ++wi
+				) {
+					*xerrj = {};
+					auto neterri = neterrptr;
+					auto wij = wi;
+					for (; neterri < neterriend;
+						++neterri,
+						wij += layer.w.storageWidth()
+					) {
+						*xerrj += wij[0] * neterri[0];
+					}
 				}
-				layer.xErr[j] = s;
 			}
+#else
+			for (int j = 0; j < layer.xErr.size; ++j) {
+				Real sum = {};
+				for (int i = 0; i < layer.netErr.size; ++i) {
+					sum += layer.netErr[i] * layer.w[i][j];
+				}
+				layer.xErr[j] = sum;
+			}
+#endif
 
 			// adjust new weights
+			auto const storageWidth = layer.w.storageWidth();
 			assert(layer.x[layer.x.size] == layer.getBias() ? 1 : 0);
 			if (!useBatch) {
 				// ... directly/immediately
-				for (int i = 0; i < layer.w.height(); ++i) {
-					auto const l = layer.x.size;
-					for (int j = 0; j <= l; ++j) {
-						layer.w[i][j] += dt * layer.netErr[i] * layer.x[j];
+				auto wij = layer.w.v.data();
+				auto xptr = layer.x.v.data();
+				auto xendptr = xptr + storageWidth;
+				auto neterri = layer.netErr.v.data();
+				auto neterriend = neterri + height;
+				for (; neterri < neterriend; ++neterri) {
+					for (auto xj = xptr; xj < xendptr; ++xj, ++wij) {
+						*wij += dt * neterri[0] * xj[0];
 					}
 				}
 			} else {
 				// ... accumulate into dw
-				for (int i = 0; i < layer.w.height(); ++i) {
-					auto const l = layer.x.size;
-					for (int j = 0; j <= l; ++j) {
-						layer.dw[i][j] += dt * layer.netErr[i] * layer.x[j];
+				auto dwij = layer.dw.v.data();
+				auto xptr = layer.x.v.data();
+				auto xendptr = xptr + storageWidth;
+				auto neterri = layer.netErr.v.data();
+				auto neterriend = neterri + height;
+				for (; neterri < neterriend; ++neterri) {
+					for (auto xj = xptr; xj < xendptr; ++xj, ++dwij) {
+						*dwij += dt * neterri[0] * xj[0];
 					}
 				}
 			}
@@ -332,9 +377,12 @@ struct ANN {
 			auto wijendptr = wijptr + layer.w.storageSize.product();
 			auto dwijptr = layer.dw.v.data();
 			for (; wijptr < wijendptr; 
-				++wijptr, ++dwijptr
+				wijptr += 4, dwijptr += 4
 			) {
-				*wijptr += *dwijptr;
+				wijptr[0] += dwijptr[0];
+				wijptr[1] += dwijptr[1];
+				wijptr[2] += dwijptr[2];
+				wijptr[3] += dwijptr[3];
 			}
 		}
 		clearBatch();

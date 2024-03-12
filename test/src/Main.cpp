@@ -98,6 +98,6 @@ void performance() {
 }
 
 int main() {
-	accuracy();
-//	performance();
+//	accuracy();
+	performance();
 }

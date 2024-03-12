@@ -377,12 +377,9 @@ struct ANN {
 			auto wijendptr = wijptr + layer.w.storageSize.product();
 			auto dwijptr = layer.dw.v.data();
 			for (; wijptr < wijendptr; 
-				wijptr += 4, dwijptr += 4
+				++wijptr, ++dwijptr
 			) {
 				wijptr[0] += dwijptr[0];
-				wijptr[1] += dwijptr[1];
-				wijptr[2] += dwijptr[2];
-				wijptr[3] += dwijptr[3];
 			}
 		}
 		clearBatch();

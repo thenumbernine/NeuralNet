@@ -1,5 +1,5 @@
 distName='NeuralNet'
-distType='inc'
+distType='lib'
 depends:append{
 	'../Common',
 	'../Tensor',

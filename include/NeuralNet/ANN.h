@@ -88,7 +88,23 @@ struct ANN {
 	Vector output, outputError;
 	// used for training:
 	Vector desired;
-	
+
+	Real dt = 1;
+
+	ANN(std::initializer_list<int> layerSizes) {
+		auto layerSizeIter = layerSizes.begin();
+		auto prevLayerSize = *layerSizeIter;
+		for (++layerSizeIter; layerSizeIter != layerSizes.end(); ++layerSizeIter) {
+			layers.emplace_back(prevLayerSize, *layerSizeIter);
+			prevLayerSize = *layerSizeIter;
+		}
+		// final layer
+		output = Vector(prevLayerSize);
+		outputError = Vector(prevLayerSize);
+		desired = Vector(prevLayerSize);
+	}
+
+	// TODO can this default into the initializer_list ctor?
 	ANN(std::vector<int> layerSizes) {
 		for (int i = 0; i < (int)layerSizes.size()-1; ++i) {
 			layers.emplace_back(layerSizes[i], layerSizes[i+1]);
@@ -146,6 +162,10 @@ struct ANN {
 			assert(wij == w.v.data() + width * height);
 		}
 	}
+
+	void backPropagate(Real dt) {
+	}
+	void backPropagate() { backPropagate(dt); }
 };
 
 }

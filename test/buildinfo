@@ -1,0 +1,7 @@
+distName='test'
+distType='app'
+depends:append{
+	'..',
+	'../../Common',
+	'../../Tensor',
+}

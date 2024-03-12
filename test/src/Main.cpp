@@ -46,12 +46,10 @@ void performance() {
 	auto random = []() -> double { return (double)rand() / (double)RAND_MAX; };
 	auto nn = NeuralNet::ANN{222, 80, 40, 2};
 	
-	//timer
 	for (auto & xi : nn.input().v) {
 		xi = random();
 	}
 
-	//timer
 	int numIter = 10000;
 	Common::timeFunc("feedForward only", [&](){
 		for (int i = 0; i < numIter; ++i) {
@@ -61,6 +59,6 @@ void performance() {
 }
 
 int main() {
-// accuracy();
+//	accuracy();
 	performance();
 }

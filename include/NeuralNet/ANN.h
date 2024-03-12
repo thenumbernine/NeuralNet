@@ -135,6 +135,7 @@ struct ANN {
 			auto wij = w.v.data();
 			auto xptr = x.v.data();
 			auto xendptr = xptr + width - 1;	// minus one to skip bias right-most col
+			auto xendptrminus4 = xendptr - 4;
 			auto neti = net.v.data();	//net.v.begin() ? which is faster?
 			auto netiend = neti + height;
 			auto yi = y.v.data();
@@ -142,14 +143,30 @@ struct ANN {
 				++neti, ++yi
 			) {
 				auto xj = xptr;
+#if 1 // which is faster, writing to mem directly or to a temp?				
 				*neti = *wij * *xj;
+#else	// this is taking 33% longer ...
+				auto sum = *wij * *xj;
+#endif				
 				++wij;
 				++xj;
+
+#if 1	// runs 3x faster with GCC
+				for (; xj <= xendptrminus4; 
+					xj += 4, wij += 4
+				) {
+					*neti += wij[0] * xj[0]
+						+ wij[1] * xj[1]
+						+ wij[2] * xj[2]
+						+ wij[3] * xj[3];
+				}
+#endif				
 				for (; xj < xendptr; 
 					++xj, ++wij
 				) {
-					*neti += *wij * *xj;
+					*neti += wij[0] * xj[0];
 				}
+			
 				assert(xj == xendptr);
 				if (useBias) {
 					*neti += *wij;

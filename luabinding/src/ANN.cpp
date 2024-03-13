@@ -375,7 +375,6 @@ struct Info<std::vector<Elem>>
 		}
 	}
 
-	// works with IndexAccess, which gives __index and __newindex
 	static Elem & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
 	}
@@ -430,7 +429,13 @@ struct Info<NeuralNet::Vector<Real>>
 
 template<typename Real>
 struct Info<NeuralNet::ThinVector<Real>>
-: public InfoStructBase<NeuralNet::ThinVector<Real>> {
+:	public InfoStructBase<NeuralNet::ThinVector<Real>>,
+	IndexAccess<
+		Info<NeuralNet::ThinVector<Real>>,
+		NeuralNet::ThinVector<Real>,
+		Real
+	>
+{
 	using Super = InfoStructBase<NeuralNet::ThinVector<Real>>;
 	using Type = NeuralNet::ThinVector<Real>;
 
@@ -438,42 +443,12 @@ struct Info<NeuralNet::ThinVector<Real>>
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 
-	// __index and __newindex are same as Info<std::vector<Type>> ...
-
-	static int __index(lua_State * L, Type & o) {
-		if (lua_type(L, 2) != LUA_TNUMBER) {
-			lua_pushnil(L);
-			return 1;
-		}
-		int i = lua_tointeger(L, 2);
-		--i;
-		// using 1-based indexing. sue me.
-		if (i < 0 || i >= o.size) {
-			lua_pushnil(L);
-			return 1;
-		}
-		LuaRW<Real>::push(L, o[i]);
-		return 1;
+	static Real & IndexAt(lua_State * L, Type & o, int i) {
+		return o[i];
 	}
 
-	static int __newindex(lua_State * L, Type & o) {
-		if (lua_type(L, 2) != LUA_TNUMBER) {
-			luaL_error(L, "can only write to index elements");
-		}
-		int i = lua_tointeger(L, 2);
-		--i;
-		// using 1-based indexing. sue me.
-		if (i < 0 || i >= o.size) {
-			luaL_error(L, "index %d is out of bounds", i+1);
-		}
-		// will error if you try to write a non-prim
-		LuaRW<Real>::read(L, 3, o[i]);
-		return 1;
-	}
-
-	static int __len(lua_State * L, Type & o) {
-		lua_pushinteger(L, o.size);
-		return 1;
+	static int IndexLen(Type const & o) {
+		return o.size;
 	}
 
 	static auto & getFields() {

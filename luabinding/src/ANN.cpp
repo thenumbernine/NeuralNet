@@ -120,10 +120,13 @@ struct InfoStructBase {
 template<typename T>
 struct Info {};
 
+#define PTRFIELD "ptr"
+
 template<typename T>
 static T * lua_getptr(lua_State * L, int index) {
 	luaL_checktype(L, index, LUA_TTABLE);
-	lua_getfield(L, index, "ptr");
+	lua_pushliteral(L, PTRFIELD);
+	lua_rawget(L, index);
 	luaL_checktype(L, -1, LUA_TUSERDATA);
 	// verify metatable is Info<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
 	T * o = (T*)lua_touserdata(L, -1);
@@ -167,8 +170,9 @@ struct LuaRW {
 		// so it'll have to be a new lua table that points back to this
 		lua_newtable(L);
 		luaL_setmetatable(L, Info<T>::mtname.data());
+		lua_pushliteral(L, PTRFIELD);
 		lua_pushlightuserdata(L, &v);
-		lua_setfield(L, -2, "ptr");
+		lua_rawset(L, -3);
 	}
 
 	static T read(lua_State * L, int index) {
@@ -368,8 +372,9 @@ struct Info<NeuralNet::ANN<Real>>
 
 		lua_newtable(L);
 		luaL_setmetatable(L, Info<T>::mtname.data());
+		lua_pushliteral(L, PTRFIELD);
 		new(L) T(layerSizes);
-		lua_setfield(L, -2, "ptr");
+		lua_rawset(L, -3);
 		return 1;
 	}
 	
@@ -383,7 +388,6 @@ struct Info<NeuralNet::ANN<Real>>
 		lua_setfield(L, -2, "new");
 		lua_pop(L, 1);
 	}
-
 
 	static auto & getFields() {
 		static auto field_dt = Field<&T::dt>();

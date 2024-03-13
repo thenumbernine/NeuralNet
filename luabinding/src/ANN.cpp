@@ -115,7 +115,6 @@ static inline int __tostring(lua_State * L) {
 
 
 
-
 // infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
 
 template<>
@@ -129,9 +128,21 @@ template<typename T> constexpr bool has__newindex_v = requires(T const & t) { t.
 template<typename T> constexpr bool has__len_v = requires(T const & t) { t.__len; };
 template<typename T> constexpr bool has__call_v = requires(T const & t) { t.__call; };
 template<typename T> constexpr bool has__tostring_v = requires(T const & t) { t.__tostring; };
+template<typename T> constexpr bool has_mt_ctor_v = requires(T const & t) { t.mt_ctor; };
 
 template<typename T>
 struct InfoStructBase {
+
+	// add the class constructor as the call operator of the metatable
+	static void initMtCtor(lua_State * L) {
+		static constexpr std::string_view suffix = " metatable";
+		static constexpr std::string_view mtname = join_v<Info<T>::mtname, suffix>;
+		if (!luaL_newmetatable(L, mtname.data())) return;
+
+		lua_pushcfunction(L, Info<T>::mt_ctor);
+		lua_setfield(L, -2, "__call");
+	}
+
 	static void mtinit(lua_State * L) {
 		if (luaL_newmetatable(L, Info<T>::mtname.data())) {
 			// not supported in luajit ...
@@ -162,6 +173,12 @@ struct InfoStructBase {
 				lua_pushcfunction(L, ::__tostring<T>);
 				lua_setfield(L, -2, "__tostring");
 			}
+
+			// ok now let's give the metatable a metatable, so if someone calls it, it'll call the ctor
+			if constexpr (has_mt_ctor_v<Info<T>>) {
+				initMtCtor(L);
+			}
+			lua_setmetatable(L, -2);
 		}
 		lua_pop(L, 1);
 	
@@ -432,10 +449,10 @@ struct Info<NeuralNet::ANN<Real>>
 	// call metatable = create new object
 	// the member object access is lightuserdata i.e. no metatable ,so I'm wrapping it in a Lua table
 	// so for consistency I'll do the same with dense-userdata ...
-	static int mt_new(lua_State * L) {
+	static int mt_ctor(lua_State * L) {
 		
 		// TODO would be nice to abstract this into ctor arg interpretation
-		// then I could move mt_new to the InfoBase parent
+		// then I could move mt_ctor to the InfoBase parent
 		// 1st arg is the metatable ... or its another ANN
 		// stack: 1st arg should be the mt, since its call operator is the ann ctor
 		int const nargs = lua_gettop(L);
@@ -451,17 +468,7 @@ struct Info<NeuralNet::ANN<Real>>
 		lua_rawset(L, -3);
 		return 1;
 	}
-	
-	static void mtinit(lua_State * L) {
-		//init mt ...
-		Super::mtinit(L);
-	
-		//add call operator for ctor
-		luaL_getmetatable(L, mtname.data());
-		lua_pushcfunction(L, mt_new);
-		lua_setfield(L, -2, "new");
-		lua_pop(L, 1);
-	}
+
 
 	static auto & getFields() {
 		static auto field_dt = Field<&T::dt>();

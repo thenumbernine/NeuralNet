@@ -69,6 +69,53 @@ void * operator new(size_t size, lua_State * L) {
 template<typename T>
 struct Info;
 
+#define PTRFIELD "ptr"
+
+template<typename T>
+static T * lua_getptr(lua_State * L, int index) {
+	luaL_checktype(L, index, LUA_TTABLE);
+	lua_pushliteral(L, PTRFIELD);
+	lua_rawget(L, index);
+	if (!lua_isuserdata(L, -1)) {	// both kinds of userdata plz
+		luaL_checktype(L, -1, LUA_TUSERDATA);	// but i like their error so 
+	}
+	// verify metatable is Info<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
+	T * o = (T*)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+	if (!o) luaL_error(L, "tried to index a null pointer");
+	return o;
+}
+
+// I could just use the Info static methods themselves, but meh, I cast the object here
+
+template<typename T>
+static inline int __index(lua_State * L) {
+	return Info<T>::__index(L, *lua_getptr<T>(L, 1));
+}
+
+template<typename T>
+static inline int __newindex(lua_State * L) {
+	return Info<T>::__newindex(L, *lua_getptr<T>(L, 1));
+}
+
+template<typename T>
+static inline int __len(lua_State * L) {
+	return Info<T>::__len(L, *lua_getptr<T>(L, 1));
+}
+
+template<typename T>
+static inline int __call(lua_State * L) {
+	return Info<T>::__call(L, *lua_getptr<T>(L, 1));
+}
+
+template<typename T>
+static inline int __tostring(lua_State * L) {
+	return Info<T>::__tostring(L, *lua_getptr<T>(L, 1));
+}
+
+
+
+
 // infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
 
 template<>
@@ -77,12 +124,44 @@ struct Info<double> {
 };
 
 // base infos for all structs:
+template<typename T> constexpr bool has__index_v = requires(T const & t) { t.__index; };
+template<typename T> constexpr bool has__newindex_v = requires(T const & t) { t.__newindex; };
+template<typename T> constexpr bool has__len_v = requires(T const & t) { t.__len; };
+template<typename T> constexpr bool has__call_v = requires(T const & t) { t.__call; };
+template<typename T> constexpr bool has__tostring_v = requires(T const & t) { t.__tostring; };
 
 template<typename T>
 struct InfoStructBase {
 	static void mtinit(lua_State * L) {
 		if (luaL_newmetatable(L, Info<T>::mtname.data())) {
-			luaL_setfuncs(L, Info<T>::mtfields, 0);
+			// not supported in luajit ...
+			lua_pushstring(L, Info<T>::mtname.data());
+			lua_setfield(L, -2, "__name");
+
+			if constexpr (has__index_v<Info<T>>) {
+				lua_pushcfunction(L, ::__index<T>);
+				lua_setfield(L, -2, "__index");
+			}
+
+			if constexpr (has__newindex_v<Info<T>>) {
+				lua_pushcfunction(L, ::__newindex<T>);
+				lua_setfield(L, -2, "__newindex");
+			}
+
+			if constexpr (has__len_v<Info<T>>) {
+				lua_pushcfunction(L, ::__len<T>);
+				lua_setfield(L, -2, "__len");
+			}
+
+			if constexpr (has__call_v<Info<T>>) {
+				lua_pushcfunction(L, ::__call<T>);
+				lua_setfield(L, -2, "__call");
+			}
+		
+			if constexpr (has__tostring_v<Info<T>>) {
+				lua_pushcfunction(L, ::__tostring<T>);
+				lua_setfield(L, -2, "__tostring");
+			}
 		}
 		lua_pop(L, 1);
 	
@@ -115,50 +194,12 @@ struct InfoStructBase {
 		iter->second->read(o, L, 3);
 		return 0;
 	}
+
+	static int __tostring(lua_State * L, T & o) {
+		lua_pushfstring(L, "%s: 0x%x", Info<T>::mtname.data(), &o);
+		return 1;
+	}
 };
-
-template<typename T>
-struct Info {};
-
-#define PTRFIELD "ptr"
-
-template<typename T>
-static T * lua_getptr(lua_State * L, int index) {
-	luaL_checktype(L, index, LUA_TTABLE);
-	lua_pushliteral(L, PTRFIELD);
-	lua_rawget(L, index);
-	luaL_checktype(L, -1, LUA_TUSERDATA);
-	// verify metatable is Info<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
-	T * o = (T*)lua_touserdata(L, -1);
-	lua_pop(L, 1);
-	if (!o) luaL_error(L, "tried to index a null pointer");
-	return o;
-}
-
-template<typename T>
-static inline int __index(lua_State * L) {
-	// use default which picks from Info::getFields()
-	return Info<T>::__index(L, *lua_getptr<T>(L, 1));
-}
-
-template<typename T>
-static inline int __newindex(lua_State * L) {
-	// use default which picks from Info::getFields()
-	return Info<T>::__newindex(L, *lua_getptr<T>(L, 1));
-}
-
-template<typename T>
-static inline int __len(lua_State * L) {
-	// if __len isn't defined in Info then this will give a compiler error
-	return Info<T>::__len(L, *lua_getptr<T>(L, 1));
-}
-
-template<typename T>
-static inline int __call(lua_State * L) {
-	// if __call isn't defined in Info then this will give a compiler error
-	return Info<T>::__call(L, *lua_getptr<T>(L, 1));
-}
-
 
 
 // general case just wraps the memory
@@ -245,13 +286,6 @@ struct Info<std::vector<Elem>> : public InfoStructBase<std::vector<Elem>> {
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Elem>::mtname, strsuf>>;
 
-	static constexpr luaL_Reg mtfields[] = {
-		{"__index", ::__index<T>},
-		{"__newindex", ::__newindex<T>},
-		{"__len", ::__len<T>},
-		{nullptr, nullptr},
-	};
-
 	static int __index(lua_State * L, T & o) {
 		if (lua_type(L, 2) != LUA_TNUMBER) {
 			lua_pushnil(L);
@@ -309,13 +343,6 @@ struct Info<NeuralNet::Vector<Real>>
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 
-	static constexpr luaL_Reg mtfields[] = {
-		{"__index", ::__index<T>},
-		{"__newindex", ::__newindex<T>},
-		{"__len", ::__len<T>},
-		{nullptr, nullptr},
-	};
-
 	static int __len(lua_State * L, T & o) {
 		lua_pushinteger(L, o.size);
 		return 1;
@@ -341,13 +368,6 @@ struct Info<NeuralNet::Matrix<Real>>
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 	
-	static constexpr luaL_Reg mtfields[] = {
-		{"__index", ::__index<T>},
-		{"__newindex", ::__newindex<T>},
-		{"__len", ::__len<T>},
-		{nullptr, nullptr},
-	};
-
 	// Matrix # __len is its height
 	// Matrix[i] will return the ThinVector of the row
 	static int __len(lua_State * L, T & o) {
@@ -371,12 +391,6 @@ struct Info<NeuralNet::Layer<Real>>
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 
-	static constexpr luaL_Reg mtfields[] = {
-		{"__index", ::__index<T>},
-		{"__newindex", ::__newindex<T>},
-		{nullptr, nullptr},
-	};
-	
 	static auto & getFields() {
 		//static auto field_x = Field<&T::x>();
 		//static auto field_xErr = Field<&T::xErr>();
@@ -415,12 +429,6 @@ struct Info<NeuralNet::ANN<Real>>
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 		
-	static constexpr luaL_Reg mtfields[] = {
-		{"__index", ::__index<T>},
-		{"__newindex", ::__newindex<T>},
-		{nullptr, nullptr},
-	};
-
 	// call metatable = create new object
 	// the member object access is lightuserdata i.e. no metatable ,so I'm wrapping it in a Lua table
 	// so for consistency I'll do the same with dense-userdata ...

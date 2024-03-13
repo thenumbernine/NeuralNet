@@ -76,7 +76,7 @@ struct Info<double> {
 	static constexpr std::string_view mtname = "double";
 };
 
-// infos for structs:
+// base infos for all structs:
 
 template<typename T>
 struct InfoStructBase {
@@ -93,7 +93,7 @@ struct InfoStructBase {
 
 	// default behavior.  child template-specializations can override this.
 	
-	static int __index(lua_State * L, T * o) {
+	static int __index(lua_State * L, T & o) {
 		char const * const k = lua_tostring(L, 2);
 		auto const & fields = Info<T>::getFields();
 		auto iter = fields.find(k);
@@ -101,18 +101,18 @@ struct InfoStructBase {
 			lua_pushnil(L);
 			return 1;
 		}
-		iter->second->push(*o, L);
+		iter->second->push(o, L);
 		return 1;
 	}
 
-	static int __newindex(lua_State * L, T * o) {
+	static int __newindex(lua_State * L, T & o) {
 		char const * const k = lua_tostring(L, 2);
 		auto const & fields = Info<T>::getFields();
 		auto iter = fields.find(k);
 		if (iter == fields.end()) {
 			luaL_error(L, "sorry, this table cannot accept new members");
 		}
-		iter->second->read(*o, L, 3);
+		iter->second->read(o, L, 3);
 		return 0;
 	}
 };
@@ -138,25 +138,25 @@ static T * lua_getptr(lua_State * L, int index) {
 template<typename T>
 static inline int __index(lua_State * L) {
 	// use default which picks from Info::getFields()
-	return Info<T>::__index(L, lua_getptr<T>(L, 1));
+	return Info<T>::__index(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __newindex(lua_State * L) {
 	// use default which picks from Info::getFields()
-	return Info<T>::__newindex(L, lua_getptr<T>(L, 1));
+	return Info<T>::__newindex(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __len(lua_State * L) {
 	// if __len isn't defined in Info then this will give a compiler error
-	return Info<T>::__len(L, lua_getptr<T>(L, 1));
+	return Info<T>::__len(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __call(lua_State * L) {
 	// if __call isn't defined in Info then this will give a compiler error
-	return Info<T>::__call(L, lua_getptr<T>(L, 1));
+	return Info<T>::__call(L, *lua_getptr<T>(L, 1));
 }
 
 
@@ -175,10 +175,8 @@ struct LuaRW {
 		lua_rawset(L, -3);
 	}
 
-	static T read(lua_State * L, int index) {
-		// TODO how about assigning-by-value C++ objs to tables / deserialization from Lua?
+	static void read(lua_State * L, int index, T & result) {
 		luaL_error(L, "this field cannot be overwritten");
-		return {};	// this is cae for return-by-out-arg
 	}
 };
 
@@ -189,8 +187,8 @@ struct LuaRW<T> {
 	static void push(lua_State * L, T v) {
 		lua_pushnumber(L, v);
 	}
-	static T read(lua_State * L, int index) {
-		return lua_tonumber(L, index);
+	static void read(lua_State * L, int index, T & result) {
+		result = lua_tonumber(L, index);
 	}
 };
 
@@ -201,8 +199,8 @@ struct LuaRW<T> {
 		lua_pushinteger(L, v);
 	}
 
-	static T read(lua_State * L, int index) {
-		return lua_tointeger(L, index);
+	static void read(lua_State * L, int index, T & result) {
+		result = lua_tointeger(L, index);
 	}
 };
 
@@ -227,7 +225,7 @@ struct Field : public FieldBase<typename Common::MemberPointer<decltype(field)>:
 	}
 
 	virtual void read(Base & obj, lua_State * L, int index) const override {
-		obj.*field = LuaRW<Value>::read(L, index);
+		 LuaRW<Value>::read(L, index, obj.*field);
 	}
 	
 	virtual void mtinit(lua_State * L) const override {
@@ -236,6 +234,71 @@ struct Field : public FieldBase<typename Common::MemberPointer<decltype(field)>:
 		}
 	}
 };
+
+// infos for stl
+
+template<typename Elem>
+struct Info<std::vector<Elem>> : public InfoStructBase<std::vector<Elem>> {
+	using T = std::vector<Elem>;
+
+	static constexpr std::string_view strpre = "std::vector<";
+	static constexpr std::string_view strsuf = ">";
+	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Elem>::mtname, strsuf>>;
+
+	static constexpr luaL_Reg mtfields[] = {
+		{"__index", ::__index<T>},
+		{"__newindex", ::__newindex<T>},
+		{"__len", ::__len<T>},
+		{nullptr, nullptr},
+	};
+
+	static int __index(lua_State * L, T & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			lua_pushnil(L);
+			return 1;
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.	
+		if (i < 0 || i >= o.size()) {
+			lua_pushnil(L);
+			return 1;
+		}
+		LuaRW<Elem>::push(L, o[i]);
+		return 1;
+	}
+
+	static int __newindex(lua_State * L, T & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			luaL_error(L, "can only write to index elements");
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.	
+		if (i < 0 || i >= o.size()) {
+			luaL_error(L, "index %d is out of bounds", i+1);
+		}
+		// will error if you try to write a non-prim
+		LuaRW<Elem>::read(L, 3, o[i]);
+		return 1;
+	}
+
+	static int __len(lua_State * L, T & o) {
+		lua_pushinteger(L, o.size());
+		return 1;
+	}
+
+	static auto & getFields() {
+		static std::map<std::string, FieldBase<T>*> fields = {
+		};
+		return fields;
+	}
+
+};
+
+
+
+// info for ANN structs:
 
 template<typename Real>
 struct Info<NeuralNet::Vector<Real>> 
@@ -253,13 +316,13 @@ struct Info<NeuralNet::Vector<Real>>
 		{nullptr, nullptr},
 	};
 
-	static int __len(lua_State * L, T * o) {
-		lua_pushinteger(L, o->size);
+	static int __len(lua_State * L, T & o) {
+		lua_pushinteger(L, o.size);
 		return 1;
 	}
 
 	static auto & getFields() {
-		static std::map<std::string, FieldBase<NeuralNet::Vector<Real>>*> fields = {
+		static std::map<std::string, FieldBase<T>*> fields = {
 			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
 			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
 			//{"normL1", new Field<&NeuralNet::Vector<Real>>()},
@@ -287,8 +350,8 @@ struct Info<NeuralNet::Matrix<Real>>
 
 	// Matrix # __len is its height
 	// Matrix[i] will return the ThinVector of the row
-	static int __len(lua_State * L, T * o) {
-		lua_pushinteger(L, o->size.x);
+	static int __len(lua_State * L, T & o) {
+		lua_pushinteger(L, o.size.x);
 		return 1;
 	}
 	
@@ -362,6 +425,9 @@ struct Info<NeuralNet::ANN<Real>>
 	// the member object access is lightuserdata i.e. no metatable ,so I'm wrapping it in a Lua table
 	// so for consistency I'll do the same with dense-userdata ...
 	static int mt_new(lua_State * L) {
+		
+		// TODO would be nice to abstract this into ctor arg interpretation
+		// then I could move mt_new to the InfoBase parent
 		// 1st arg is the metatable ... or its another ANN
 		// stack: 1st arg should be the mt, since its call operator is the ann ctor
 		int const nargs = lua_gettop(L);
@@ -382,7 +448,7 @@ struct Info<NeuralNet::ANN<Real>>
 		//init mt ...
 		Super::mtinit(L);
 	
-		//then add call operator for ctor
+		//add call operator for ctor
 		luaL_getmetatable(L, mtname.data());
 		lua_pushcfunction(L, mt_new);
 		lua_setfield(L, -2, "new");
@@ -391,7 +457,7 @@ struct Info<NeuralNet::ANN<Real>>
 
 	static auto & getFields() {
 		static auto field_dt = Field<&T::dt>();
-		//static auto field_layers = Field<&T::layers>();
+		static auto field_layers = Field<&T::layers>();
 		static auto field_useBatch = Field<&T::useBatch>();
 		static auto field_batchCounter = Field<&T::batchCounter>();
 		static auto field_totalBatchCounter = Field<&T::totalBatchCounter>();
@@ -402,7 +468,7 @@ struct Info<NeuralNet::ANN<Real>>
 		//static auto field_clearBatch = Field<&T::clearBatch>();
 		static std::map<std::string, FieldBase<T>*> fields = {
 			{"dt", &field_dt},
-			//{"layers", &field_layers},
+			{"layers", &field_layers},
 			{"useBatch", &field_useBatch},
 			{"batchCounter", &field_batchCounter},
 			{"totalBatchCounter", &field_totalBatchCounter},

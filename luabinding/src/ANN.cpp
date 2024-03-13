@@ -435,9 +435,9 @@ struct Info<NeuralNet::Vector<Real>>
 
 template<typename Real>
 struct Info<NeuralNet::ThinVector<Real>> 
-: public InfoStructBase<NeuralNet::Vector<Real>> {
-	using Super = InfoStructBase<NeuralNet::Vector<Real>>;
-	using T = NeuralNet::Vector<Real>;
+: public InfoStructBase<NeuralNet::ThinVector<Real>> {
+	using Super = InfoStructBase<NeuralNet::ThinVector<Real>>;
+	using T = NeuralNet::ThinVector<Real>;
 
 	static constexpr std::string_view strpre = "NeuralNet::ThinVector<";
 	static constexpr std::string_view strsuf = ">";
@@ -525,10 +525,17 @@ struct Info<NeuralNet::Matrix<Real>>
 			return 1;
 		}
 	
-		// copy by value
+		// create a full-userdata of the ThinVector so that it sticks around when Lua tries to access it
+#if 0 // I don't have a mechanism for LuaRW to do this ...		
 		auto row = o[i];
-		// I should create a full-userdata of the ThinVector ...
 		LuaRW<NeuralNet::ThinVector<Real>>::push(L, row);
+#else
+		lua_newtable(L);
+		luaL_setmetatable(L, Info<NeuralNet::ThinVector<Real>>::mtname.data());
+		lua_pushliteral(L, PTRFIELD);
+		new(L) NeuralNet::ThinVector(o[i]);
+		lua_rawset(L, -3);
+#endif
 		return 1;
 	}
 
@@ -543,8 +550,17 @@ struct Info<NeuralNet::Matrix<Real>>
 			luaL_error(L, "index %d is out of bounds", i+1);
 		}
 		// will error if you try to write a non-prim
+		// same as above
+#if 0
 		auto row = o[i];
 		LuaRW<NeuralNet::ThinVector<Real>>::read(L, 3, row);
+#else
+		lua_newtable(L);
+		luaL_setmetatable(L, Info<NeuralNet::ThinVector<Real>>::mtname.data());
+		lua_pushliteral(L, PTRFIELD);
+		new(L) NeuralNet::ThinVector(o[i]);
+		lua_rawset(L, -3);
+#endif		
 		return 1;
 	}
 

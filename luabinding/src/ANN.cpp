@@ -69,8 +69,17 @@ void * operator new(size_t size, lua_State * L) {
 template<typename T>
 struct Info;
 
+// infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
+
+template<>
+struct Info<double> {
+	static constexpr std::string_view mtname = "double";
+};
+
+// infos for structs:
+
 template<typename T>
-struct InfoBase {
+struct InfoStructBase {
 	static void mtinit(lua_State * L) {
 		if (luaL_newmetatable(L, Info<T>::mtname.data())) {
 			luaL_setfuncs(L, Info<T>::mtfields, 0);
@@ -109,7 +118,7 @@ struct InfoBase {
 };
 
 template<typename T>
-struct Info : public InfoBase<T> {};
+struct Info {};
 
 template<typename T>
 static T * lua_getptr(lua_State * L, int index) {
@@ -224,15 +233,14 @@ struct Field : public FieldBase<typename Common::MemberPointer<decltype(field)>:
 	}
 };
 
-template<>
-struct Info<NeuralNet::Vector<double>> : public InfoBase<NeuralNet::Vector<double>> {
-	using T = NeuralNet::Vector<double>;
+template<typename Real>
+struct Info<NeuralNet::Vector<Real>> 
+: public InfoStructBase<NeuralNet::Vector<Real>> {
+	using T = NeuralNet::Vector<Real>;
 
-	static constexpr std::string_view strpre = "NeuralNet:Vector<";
-	static constexpr std::string_view strreal = "double";
+	static constexpr std::string_view strpre = "NeuralNet::Vector<";
 	static constexpr std::string_view strsuf = ">";
-
-	static constexpr std::string_view mtname = join_v<strpre, join_v<strreal, strsuf>>;
+	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 
 	static constexpr luaL_Reg mtfields[] = {
 		{"__index", ::__index<T>},
@@ -246,21 +254,26 @@ struct Info<NeuralNet::Vector<double>> : public InfoBase<NeuralNet::Vector<doubl
 		return 1;
 	}
 
-	static std::map<std::string, FieldBase<T>*> & getFields() {
-		static std::map<std::string, FieldBase<NeuralNet::Vector<double>>*> fields = {
-			//{"size", new Field<&NeuralNet::Vector<double>::size>()},
-			//{"storageSize", new Field<&NeuralNet::Vector<double>>()},
-			//{"normL1", new Field<&NeuralNet::Vector<double>>()},
+	static auto & getFields() {
+		static std::map<std::string, FieldBase<NeuralNet::Vector<Real>>*> fields = {
+			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
+			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
+			//{"normL1", new Field<&NeuralNet::Vector<Real>>()},
 		};
 		return fields;
 	}
 };
 
 
-template<>
-struct Info<NeuralNet::Matrix<double>> : public InfoBase<NeuralNet::Matrix<double>> {
-	using T = NeuralNet::Matrix<double>;
-	static constexpr std::string_view mtname = "NeuralNet:Matrix<double>";
+template<typename Real>
+struct Info<NeuralNet::Matrix<Real>> 
+: public InfoStructBase<NeuralNet::Matrix<Real>> {
+	using T = NeuralNet::Matrix<Real>;
+	
+	static constexpr std::string_view strpre = "NeuralNet::Matrix<";
+	static constexpr std::string_view strsuf = ">";
+	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
+	
 	static constexpr luaL_Reg mtfields[] = {
 		{"__index", ::__index<T>},
 		{"__newindex", ::__newindex<T>},
@@ -275,59 +288,65 @@ struct Info<NeuralNet::Matrix<double>> : public InfoBase<NeuralNet::Matrix<doubl
 		return 1;
 	}
 	
-	static std::map<std::string, FieldBase<T>*> & getFields() {
+	static auto & getFields() {
 		static std::map<std::string, FieldBase<T>*> fields;
 		return fields;
 	}
 };
 
 
-template<>
-struct Info<NeuralNet::Layer<double>> : public InfoBase<NeuralNet::Layer<double>> {
-	using T = NeuralNet::Layer<double>;
-	static constexpr std::string_view mtname = "NeuralNet::Layer<double>";
+template<typename Real>
+struct Info<NeuralNet::Layer<Real>> 
+: public InfoStructBase<NeuralNet::Layer<Real>> {
+	using T = NeuralNet::Layer<Real>;
+	
+	static constexpr std::string_view strpre = "NeuralNet::Layer<";
+	static constexpr std::string_view strsuf = ">";
+	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
+
 	static constexpr luaL_Reg mtfields[] = {
 		{"__index", ::__index<T>},
 		{"__newindex", ::__newindex<T>},
 		{nullptr, nullptr},
 	};
 	
-	static std::map<std::string, FieldBase<T>*> & getFields() {
-		//static auto field_NeuralNet_Layer_x = Field<&NeuralNet::Layer<double>::x>();
-		//static auto field_NeuralNet_Layer_xErr = Field<&NeuralNet::Layer<double>::xErr>();
-		//static auto field_NeuralNet_Layer_w = Field<&NeuralNet::Layer<double>::w>();
-		//static auto field_NeuralNet_Layer_net = Field<&NeuralNet::Layer<double>::net>();
-		//static auto field_NeuralNet_Layer_netErr = Field<&NeuralNet::Layer<double>::netErr>();
-		//static auto field_NeuralNet_Layer_dw = Field<&NeuralNet::Layer<double>::dw>();
-		//static auto field_NeuralNet_Layer_activation = Field<&NeuralNet::Layer<double>::activation>();
-		//static auto field_NeuralNet_Layer_activationDeriv = Field<&NeuralNet::Layer<double>::activationDeriv>();
-		//static auto field_NeuralNet_Layer_getBias = Field<&NeuralNet::Layer<double>::getBias>();
-		static std::map<std::string, FieldBase<NeuralNet::Layer<double>>*> fields = {
+	static auto & getFields() {
+		//static auto field_x = Field<&T::x>();
+		//static auto field_xErr = Field<&T::xErr>();
+		//static auto field_w = Field<&T::w>();
+		//static auto field_net = Field<&T::net>();
+		//static auto field_netErr = Field<&T::netErr>();
+		//static auto field_dw = Field<&T::dw>();
+		//static auto field_activation = Field<&T::activation>();
+		//static auto field_activationDeriv = Field<&T::activationDeriv>();
+		//static auto field_getBias = Field<&T::getBias>();
+		static std::map<std::string, FieldBase<T>*> fields = {
 			// needs std::vector wrapper
-			//{"x", &field_NeuralNet_Layer_x},
-			//{"net", &field_NeuralNet_Layer_net},
-			//{"w", &field_NeuralNet_Layer_w},
-			//{"xErr", &field_NeuralNet_Layer_xErr},
-			//{"netErr", &field_NeuralNet_Layer_netErr},
-			//{"dw", &field_NeuralNet_Layer_dw},
+			//{"x", &field_x},
+			//{"net", &field_net},
+			//{"w", &field_w},
+			//{"xErr", &field_xErr},
+			//{"netErr", &field_netErr},
+			//{"dw", &field_dw},
 			// needs func wrapper
-			//{"activation", &field_NeuralNet_Layer_activation},
-			//{"activationDeriv", &field_NeuralNet_Layer_activationDeriv},
+			//{"activation", &field_activation},
+			//{"activationDeriv", &field_activationDeriv},
 			// needs method wrapper
-			//{"getBias", &field_NeuralNet_Layer_getBias},
+			//{"getBias", &field_getBias},
 		};
 		return fields;
 	}
 };
 
 
-template<>
-struct Info<NeuralNet::ANN<double>> 
-: public InfoBase<NeuralNet::ANN<double>> 
-{
-	using T = NeuralNet::ANN<double>;
+template<typename Real>
+struct Info<NeuralNet::ANN<Real>> 
+: public InfoStructBase<NeuralNet::ANN<Real>> {
+	using T = NeuralNet::ANN<Real>;
 	
-	static constexpr std::string_view mtname = "NeuralNet::ANN<double>";
+	static constexpr std::string_view strpre = "NeuralNet::ANN<";
+	static constexpr std::string_view strsuf = ">";
+	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 		
 	static constexpr luaL_Reg mtfields[] = {
 		{"__index", ::__index<T>},
@@ -354,28 +373,28 @@ struct Info<NeuralNet::ANN<double>>
 		return 1;
 	}
 	
-	static std::map<std::string, FieldBase<T>*> & getFields() {
-		static auto field_NeuralNet_ANN_dt = Field<&NeuralNet::ANN<double>::dt>();
-		//static auto field_NeuralNet_ANN_layers = Field<&NeuralNet::ANN<double>::layers>();
-		static auto field_NeuralNet_ANN_useBatch = Field<&NeuralNet::ANN<double>::useBatch>();
-		static auto field_NeuralNet_ANN_batchCounter = Field<&NeuralNet::ANN<double>::batchCounter>();
-		static auto field_NeuralNet_ANN_totalBatchCounter = Field<&NeuralNet::ANN<double>::totalBatchCounter>();
-		//static auto field_NeuralNet_ANN_feedForward = Field<&NeuralNet::ANN<double>::feedForward>();
-		//static auto field_NeuralNet_ANN_calcError = Field<&NeuralNet::ANN<double>::calcError>();
-		//static auto field_NeuralNet_ANN_backPropagate = Field<&NeuralNet::ANN<double>::backPropagate>();
-		//static auto field_NeuralNet_ANN_updateBatch = Field<&NeuralNet::ANN<double>::updateBatch>();
-		//static auto field_NeuralNet_ANN_clearBatch = Field<&NeuralNet::ANN<double>::clearBatch>();
-		static std::map<std::string, FieldBase<NeuralNet::ANN<double>>*> fields = {
-			{"dt", &field_NeuralNet_ANN_dt},
-			//{"layers", &field_NeuralNet_ANN_layers},
-			{"useBatch", &field_NeuralNet_ANN_useBatch},
-			{"batchCounter", &field_NeuralNet_ANN_batchCounter},
-			{"totalBatchCounter", &field_NeuralNet_ANN_totalBatchCounter},
-			//{"feedForward", &field_NeuralNet_ANN_feedForward},
-			//{"calcError", &field_NeuralNet_ANN_calcError},
-			//{"backPropagate", &field_NeuralNet_ANN_backPropagate},
-			//{"updateBatch", &field_NeuralNet_ANN_updateBatch},
-			//{"clearBatch", &field_NeuralNet_ANN_clearBatch},
+	static auto & getFields() {
+		static auto field_dt = Field<&T::dt>();
+		//static auto field_layers = Field<&T::layers>();
+		static auto field_useBatch = Field<&T::useBatch>();
+		static auto field_batchCounter = Field<&T::batchCounter>();
+		static auto field_totalBatchCounter = Field<&T::totalBatchCounter>();
+		//static auto field_feedForward = Field<&T::feedForward>();
+		//static auto field_calcError = Field<&T::calcError>();
+		//static auto field_backPropagate = Field<&T::backPropagate>();
+		//static auto field_updateBatch = Field<&T::updateBatch>();
+		//static auto field_clearBatch = Field<&T::clearBatch>();
+		static std::map<std::string, FieldBase<T>*> fields = {
+			{"dt", &field_dt},
+			//{"layers", &field_layers},
+			{"useBatch", &field_useBatch},
+			{"batchCounter", &field_batchCounter},
+			{"totalBatchCounter", &field_totalBatchCounter},
+			//{"feedForward", &field_feedForward},
+			//{"calcError", &field_calcError},
+			//{"backPropagate", &field_backPropagate},
+			//{"updateBatch", &field_updateBatch},
+			//{"clearBatch", &field_clearBatch},
 		};
 		return fields;
 	}

@@ -202,8 +202,31 @@ struct ANN {
 		output = Vector(prevLayerSize);
 		outputError = Vector(prevLayerSize);
 		desired = Vector(prevLayerSize);
-	
 	}
+
+	//identical to intializer_list ctor ... maybe make a templated consolidation
+	ANN(std::vector<int> const & layerSizes) {
+		auto layerSizeIter = layerSizes.begin();
+		auto prevLayerSize = *layerSizeIter;
+		for (++layerSizeIter; layerSizeIter != layerSizes.end(); ++layerSizeIter) {
+			auto & layer = layers.emplace_back(prevLayerSize, *layerSizeIter);
+			prevLayerSize = *layerSizeIter;
+		
+			// default weight initialization ...
+			for (int i = 0; i < layer.w.height(); ++i) {
+				for (int j = 0; j < layer.w.width(); ++j) {
+					layer.w[i][j] = random<Real>() * 2. - 1.;
+				}
+			}
+
+		}
+		// final layer
+		output = Vector(prevLayerSize);
+		outputError = Vector(prevLayerSize);
+		desired = Vector(prevLayerSize);
+	}
+
+
 
 	void feedForward() {
 		int const numLayers = (int)layers.size();

@@ -1,0 +1,12 @@
+distName='NeuralNetLua'
+distType='lib'
+depends:append{
+	'..',
+	'../../Tensor',
+	-- LuaCxx should be built with LuaCxx_luaVer=JIT
+	'../../LuaCxx',
+}
+-- [[
+compiler = 'clang++'
+linker = 'clang++'
+--]]

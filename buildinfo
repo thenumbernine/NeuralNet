@@ -3,5 +3,4 @@ distType='lib'
 depends:append{
 	'../Common',
 	'../Tensor',
-	--'../LuaCxx', -- TODO Lua bindings eventually
 }

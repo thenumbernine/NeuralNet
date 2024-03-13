@@ -22,10 +22,67 @@ struct InfoBase {
 			pair.second->mtinit(L);
 		}
 	}
+
+	static int __index(lua_State * L, T * o) {
+		char const * const k = lua_tostring(L, 2);
+		auto const & fields = Info<T>::fields;
+		auto iter = fields.find(k);
+		if (iter == fields.end()) {
+			lua_pushnil(L);
+			return 1;
+		}
+		iter->second->push(*o, L);
+		return 1;
+	}
+
+	static int __newindex(lua_State * L, T * o) {
+		char const * const k = lua_tostring(L, 2);
+		auto const & fields = Info<T>::fields;
+		auto iter = fields.find(k);
+		if (iter == fields.end()) {
+			luaL_error(L, "sorry, this table cannot accept new members");
+		}
+		iter->second->read(*o, L, 3);
+		return 0;
+	}
 };
 
 template<typename T>
 struct Info : public InfoBase<T> {};
+
+template<typename T>
+static T * lua_getptr(lua_State * L, int index) {
+	luaL_checktype(L, index, LUA_TTABLE);
+	lua_getfield(L, index, "ptr");
+	luaL_checktype(L, -1, LUA_TUSERDATA);
+	// verify metatable is Info<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
+	T * o = (T*)lua_touserdata(L, -1);
+	lua_pop(L, 1);
+	if (!o) luaL_error(L, "tried to index a null pointer");
+	return o;
+}
+
+template<typename T>
+static inline int __index(lua_State * L) {
+	return Info<T>::__index(L, lua_getptr<T>(L, 1));
+}
+
+template<typename T>
+static inline int __newindex(lua_State * L) {
+	return Info<T>::__newindex(L, lua_getptr<T>(L, 1));
+}
+
+template<typename T>
+static inline int __len(lua_State * L) {
+	return Info<T>::__len(L, lua_getptr<T>(L, 1));
+}
+
+template<typename T>
+static inline int __call(lua_State * L) {
+	return Info<T>::__call(L, lua_getptr<T>(L, 1));
+}
+
+
 
 // general case just wraps the memory
 template<typename T>
@@ -102,59 +159,6 @@ struct Field : public FieldBase<typename Common::MemberPointer<decltype(field)>:
 	}
 };
 
-template<typename T>
-static T * lua_getptr(lua_State * L, int index) {
-	luaL_checktype(L, index, LUA_TTABLE);
-	lua_getfield(L, index, "ptr");
-	luaL_checktype(L, -1, LUA_TUSERDATA);
-	// verify metatable is Info<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
-	T * o = (T*)lua_touserdata(L, -1);
-	lua_pop(L, 1);
-	if (!o) luaL_error(L, "tried to index a null pointer");
-	return o;
-}
-
-template<typename T>
-static int __index(lua_State * L) {
-	T * o = lua_getptr<T>(L, 1);
-	char const * const k = lua_tostring(L, 2);
-	auto const & fields = Info<T>::fields;
-	auto iter = fields.find(k);
-	if (iter == fields.end()) {
-		lua_pushnil(L);
-		return 1;
-	}
-	iter->second->push(*o, L);
-	return 1;
-}
-
-template<typename T>
-static int __newindex(lua_State * L) {
-	//stack: t k v
-	T * o = lua_getptr<T>(L, 1);
-	char const * const k = lua_tostring(L, 2);
-	auto const & fields = Info<T>::fields;
-	auto iter = fields.find(k);
-	if (iter == fields.end()) {
-		luaL_error(L, "sorry, this table cannot accept new members");
-	}
-	iter->second->read(*o, L, 3);
-	return 0;
-}
-
-template<typename T>
-static int __len(lua_State * L) {
-	T * o = lua_getptr<T>(L, 1);
-	return Info<T>::__len(L, o);
-}
-
-template<typename T>
-static int __call(lua_State * L) {
-	T * o = lua_getptr<T>(L, 1);
-	return Info<T>::__call(L, o);
-}
-
-
 template<>
 struct Info<NeuralNet::Vector<double>> : public InfoBase<NeuralNet::Vector<double>> {
 	using T = NeuralNet::Vector<double>;
@@ -164,9 +168,9 @@ struct Info<NeuralNet::Vector<double>> : public InfoBase<NeuralNet::Vector<doubl
 	static std::map<std::string, FieldBase<T>*> fields;
 
 	static constexpr luaL_Reg mtfields[] = {
-		{"__index", __index<T>},
-		{"__newindex", __newindex<T>},
-		{"__len", __len<T>},
+		{"__index", ::__index<T>},
+		{"__newindex", ::__newindex<T>},
+		{"__len", ::__len<T>},
 		{nullptr, nullptr},
 	};
 
@@ -190,9 +194,9 @@ struct Info<NeuralNet::Matrix<double>> : public InfoBase<NeuralNet::Matrix<doubl
 	static constexpr char const * const mtname = "NeuralNet:Matrix<double>";
 	static std::map<std::string, FieldBase<T>*> fields;
 	static constexpr luaL_Reg mtfields[] = {
-		{"__index", __index<T>},
-		{"__newindex", __newindex<T>},
-		{"__len", __len<T>},
+		{"__index", ::__index<T>},
+		{"__newindex", ::__newindex<T>},
+		{"__len", ::__len<T>},
 		{nullptr, nullptr},
 	};
 
@@ -211,8 +215,8 @@ struct Info<NeuralNet::Layer<double>> : public InfoBase<NeuralNet::Layer<double>
 	static constexpr char const * const mtname = "NeuralNet::Layer<double>";
 	static std::map<std::string, FieldBase<T>*> fields;
 	static constexpr luaL_Reg mtfields[] = {
-		{"__index", __index<T>},
-		{"__newindex", __newindex<T>},
+		{"__index", ::__index<T>},
+		{"__newindex", ::__newindex<T>},
 		{nullptr, nullptr},
 	};
 };
@@ -246,12 +250,13 @@ struct Info<NeuralNet::ANN<double>>
 : public InfoBase<NeuralNet::ANN<double>> 
 {
 	using T = NeuralNet::ANN<double>;
+	
 	static constexpr char const * const mtname = "NeuralNet::ANN<double>";
-	static std::map<std::string, FieldBase<T>*> fields;
+		
 	static constexpr luaL_Reg mtfields[] = {
-		{"__index", __index<T>},
-		{"__newindex", __newindex<T>},
-		{"__call", __call<T>},
+		{"__index", ::__index<T>},
+		{"__newindex", ::__newindex<T>},
+		{"__call", ::__call<T>},
 		{nullptr, nullptr},
 	};
 
@@ -272,6 +277,8 @@ struct Info<NeuralNet::ANN<double>>
 		lua_setfield(L, -2, "ptr");
 		return 1;
 	}
+	
+	static std::map<std::string, FieldBase<T>*> fields;
 };
 
 static auto field_NeuralNet_ANN_dt = Field<&NeuralNet::ANN<double>::dt>();

@@ -227,10 +227,10 @@ struct LuaRW {
 		// but lightuserdata has no metatable
 		// so it'll have to be a new lua table that points back to this
 		lua_newtable(L);
-#if 1
+#if 1	// if the metatable isn't there then it won't be set
 		luaL_setmetatable(L, Info<T>::mtname.data());
 #endif
-#if 0 //isn't this supposed to do the same as luaL_setmetatable ?
+#if 0 	//isn't this supposed to do the same as luaL_setmetatable ?
 		luaL_getmetatable(L, Info<T>::mtname.data());
 std::cout << "metatable " << Info<T>::mtname << " type " << lua_type(L, -1) << std::endl;
 		lua_setmetatable(L, -2);
@@ -319,12 +319,13 @@ struct Info<std::vector<Elem>>
 
 	// vector needs Elem's metatable initialized
 	static void mtinit(lua_State * L) {
-		// same as Feld::mtinit, only init the type if it's a class ...
+		Super::mtinit(L);
+		
+		//init all subtypes
+		//this test is same as in Field::mtinit
 		if constexpr (std::is_class_v<Elem>) {
 			Info<Elem>::mtinit(L);
 		}
-		
-		Super::mtinit(L);
 	}
 
 	static int __index(lua_State * L, T & o) {
@@ -384,6 +385,97 @@ struct Info<NeuralNet::Vector<Real>>
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 
+	// __index and __newindex are same as Info<std::vector<T>> ...
+
+	static int __index(lua_State * L, T & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			lua_pushnil(L);
+			return 1;
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.	
+		if (i < 0 || i >= o.size) {
+			lua_pushnil(L);
+			return 1;
+		}
+		LuaRW<Real>::push(L, o[i]);
+		return 1;
+	}
+
+	static int __newindex(lua_State * L, T & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			luaL_error(L, "can only write to index elements");
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.	
+		if (i < 0 || i >= o.size) {
+			luaL_error(L, "index %d is out of bounds", i+1);
+		}
+		// will error if you try to write a non-prim
+		LuaRW<Real>::read(L, 3, o[i]);
+		return 1;
+	}
+
+	static int __len(lua_State * L, T & o) {
+		lua_pushinteger(L, o.size);
+		return 1;
+	}
+
+	static auto & getFields() {
+		static std::map<std::string, FieldBase<T>*> fields = {
+			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
+			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
+			//{"normL1", new Field<&NeuralNet::Vector<Real>>()},
+		};
+		return fields;
+	}
+};
+
+template<typename Real>
+struct Info<NeuralNet::ThinVector<Real>> 
+: public InfoStructBase<NeuralNet::Vector<Real>> {
+	using Super = InfoStructBase<NeuralNet::Vector<Real>>;
+	using T = NeuralNet::Vector<Real>;
+
+	static constexpr std::string_view strpre = "NeuralNet::ThinVector<";
+	static constexpr std::string_view strsuf = ">";
+	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
+
+	// __index and __newindex are same as Info<std::vector<T>> ...
+
+	static int __index(lua_State * L, T & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			lua_pushnil(L);
+			return 1;
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.	
+		if (i < 0 || i >= o.size) {
+			lua_pushnil(L);
+			return 1;
+		}
+		LuaRW<Real>::push(L, o[i]);
+		return 1;
+	}
+
+	static int __newindex(lua_State * L, T & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			luaL_error(L, "can only write to index elements");
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.	
+		if (i < 0 || i >= o.size) {
+			luaL_error(L, "index %d is out of bounds", i+1);
+		}
+		// will error if you try to write a non-prim
+		LuaRW<Real>::read(L, 3, o[i]);
+		return 1;
+	}
+
 	static int __len(lua_State * L, T & o) {
 		lua_pushinteger(L, o.size);
 		return 1;
@@ -403,12 +495,60 @@ struct Info<NeuralNet::Vector<Real>>
 template<typename Real>
 struct Info<NeuralNet::Matrix<Real>> 
 : public InfoStructBase<NeuralNet::Matrix<Real>> {
+	using Super = InfoStructBase<NeuralNet::Matrix<Real>>;
 	using T = NeuralNet::Matrix<Real>;
 	
 	static constexpr std::string_view strpre = "NeuralNet::Matrix<";
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 	
+	// vector needs Elem's metatable initialized
+	static void mtinit(lua_State * L) {
+		Super::mtinit(L);
+
+		//init all subtypes
+		Info<NeuralNet::ThinVector<Real>>::mtinit(L);
+	}
+
+	// __index and __newindex are same as Info<std::vector<T>>, Info<Vector>, Info<ThinVector> ...
+
+	static int __index(lua_State * L, T & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			lua_pushnil(L);
+			return 1;
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.	
+		if (i < 0 || i >= o.size.x) {
+			lua_pushnil(L);
+			return 1;
+		}
+	
+		// copy by value
+		auto row = o[i];
+		// I should create a full-userdata of the ThinVector ...
+		LuaRW<NeuralNet::ThinVector<Real>>::push(L, row);
+		return 1;
+	}
+
+	static int __newindex(lua_State * L, T & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			luaL_error(L, "can only write to index elements");
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.	
+		if (i < 0 || i >= o.size.x) {
+			luaL_error(L, "index %d is out of bounds", i+1);
+		}
+		// will error if you try to write a non-prim
+		auto row = o[i];
+		LuaRW<NeuralNet::ThinVector<Real>>::read(L, 3, row);
+		return 1;
+	}
+
+
 	// Matrix # __len is its height
 	// Matrix[i] will return the ThinVector of the row
 	static int __len(lua_State * L, T & o) {
@@ -433,23 +573,22 @@ struct Info<NeuralNet::Layer<Real>>
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
 
 	static auto & getFields() {
-		//static auto field_x = Field<&T::x>();
-		//static auto field_xErr = Field<&T::xErr>();
-		//static auto field_w = Field<&T::w>();
-		//static auto field_net = Field<&T::net>();
-		//static auto field_netErr = Field<&T::netErr>();
-		//static auto field_dw = Field<&T::dw>();
+		static auto field_x = Field<&T::x>();
+		static auto field_xErr = Field<&T::xErr>();
+		static auto field_w = Field<&T::w>();
+		static auto field_net = Field<&T::net>();
+		static auto field_netErr = Field<&T::netErr>();
+		static auto field_dw = Field<&T::dw>();
 		//static auto field_activation = Field<&T::activation>();
 		//static auto field_activationDeriv = Field<&T::activationDeriv>();
 		//static auto field_getBias = Field<&T::getBias>();
 		static std::map<std::string, FieldBase<T>*> fields = {
-			// needs std::vector wrapper
-			//{"x", &field_x},
-			//{"net", &field_net},
-			//{"w", &field_w},
-			//{"xErr", &field_xErr},
-			//{"netErr", &field_netErr},
-			//{"dw", &field_dw},
+			{"x", &field_x},
+			{"net", &field_net},
+			{"w", &field_w},
+			{"xErr", &field_xErr},
+			{"netErr", &field_netErr},
+			{"dw", &field_dw},
 			// needs func wrapper
 			//{"activation", &field_activation},
 			//{"activationDeriv", &field_activationDeriv},

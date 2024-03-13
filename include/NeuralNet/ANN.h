@@ -57,11 +57,11 @@ std::ostream & operator<<(std::ostream & o, Vector<T> const & v) {
 }
 
 template<typename Real>
-struct ThinVec {
+struct ThinVector {
 	Real * v = {};
 	int size = {};
 	int storageSize = {};
-	ThinVec(Real * v_, int size_, int storageSize_)
+	ThinVector(Real * v_, int size_, int storageSize_)
 	:	v(v_),
 		size(size_),
 		storageSize(storageSize_)
@@ -72,8 +72,8 @@ struct ThinVec {
 
 template<typename Real>
 struct Matrix {
-	using ThinVec = NeuralNet::ThinVec<Real>;
-	using ThinVecConst = NeuralNet::ThinVec<Real const>;
+	using ThinVector = NeuralNet::ThinVector<Real>;
+	using ThinVecConst = NeuralNet::ThinVector<Real const>;
 	
 	Tensor::int2 size = {};
 	
@@ -110,7 +110,7 @@ struct Matrix {
 		return sum;
 	}
 
-	ThinVec operator[](int const i) { return ThinVec(v.data() + storageWidth() * i, width(), storageWidth()); }
+	ThinVector operator[](int const i) { return ThinVector(v.data() + storageWidth() * i, width(), storageWidth()); }
 	ThinVecConst operator[](int const i) const { return ThinVecConst(v.data() + storageWidth() * i, width(), storageWidth()); }
 };
 

@@ -307,8 +307,9 @@ struct Field : public FieldBase<typename Common::MemberPointer<decltype(field)>:
 
 // generalized __len, __index, __newindex access
 
+// child needs to provide IndexAccessRead, IndexAccessWrite, IndexLen
 template<typename Child, typename Type, typename Elem>
-struct IndexAccess {
+struct IndexAccessReadWrite {
 	static int __index(lua_State * L, Type & o) {
 		if (lua_type(L, 2) != LUA_TNUMBER) {
 			lua_pushnil(L);
@@ -321,7 +322,7 @@ struct IndexAccess {
 			lua_pushnil(L);
 			return 1;
 		}
-		LuaRW<Elem>::push(L, Child::IndexAt(L, o, i));
+		IndexAccessRead(L, o, i);
 		return 1;
 	}
 
@@ -335,14 +336,28 @@ struct IndexAccess {
 		if (i < 0 || i >= Child::IndexLen(o)) {
 			luaL_error(L, "index %d is out of bounds", i+1);
 		}
-		// will error if you try to write a non-prim
-		LuaRW<Elem>::read(L, 3, Child::IndexAt(L, o, i));
+		IndexAccessWrite(L, o, i);
 		return 1;
 	}
 
 	static int __len(lua_State * L, Type & o) {
 		lua_pushinteger(L, Child::IndexLen(o));
 		return 1;
+	}
+
+};
+
+// Child needs to provide IndexAt, IndexLen
+template<typename Child, typename Type, typename Elem>
+struct IndexAccess : IndexAccessReadWrite<Child, Type, Elem> {
+
+	static void IndexAccessRead(lua_State * L, Type & o, int i) {
+		LuaRW<Elem>::push(L, Child::IndexAt(L, o, i));
+	}
+
+	static void IndexAccessWrite(lua_State * L, Type & o, int i) {
+		// will error if you try to write a non-prim
+		LuaRW<Elem>::read(L, 3, Child::IndexAt(L, o, i));
 	}
 };
 
@@ -464,7 +479,13 @@ struct Info<NeuralNet::ThinVector<Real>>
 
 template<typename Real>
 struct Info<NeuralNet::Matrix<Real>>
-: public InfoStructBase<NeuralNet::Matrix<Real>> {
+:	public InfoStructBase<NeuralNet::Matrix<Real>>,
+	IndexAccessReadWrite<
+		Info<NeuralNet::Matrix<Real>>,
+		NeuralNet::Matrix<Real>,
+		Real
+	>
+{
 	using Super = InfoStructBase<NeuralNet::Matrix<Real>>;
 	using Type = NeuralNet::Matrix<Real>;
 
@@ -480,66 +501,25 @@ struct Info<NeuralNet::Matrix<Real>>
 		Info<NeuralNet::ThinVector<Real>>::mtinit(L);
 	}
 
-	// __index and __newindex are same as Info<std::vector<Type>>, Info<Vector>, Info<ThinVector> ...
-
-	static int __index(lua_State * L, Type & o) {
-		if (lua_type(L, 2) != LUA_TNUMBER) {
-			lua_pushnil(L);
-			return 1;
-		}
-		int i = lua_tointeger(L, 2);
-		--i;
-		// using 1-based indexing. sue me.
-		if (i < 0 || i >= o.size.x) {
-			lua_pushnil(L);
-			return 1;
-		}
-
-		// create a full-userdata of the ThinVector so that it sticks around when Lua tries to access it
-#if 0 // I don't have a mechanism for LuaRW to do this ...
-		auto row = o[i];
-		LuaRW<NeuralNet::ThinVector<Real>>::push(L, row);
-#else
+	// create a full-userdata of the ThinVector so that it sticks around when Lua tries to access it
+	static void IndexAccessRead(lua_State * L, Type & o, int i) {
 		lua_newtable(L);
 		luaL_setmetatable(L, Info<NeuralNet::ThinVector<Real>>::mtname.data());
 		lua_pushliteral(L, PTRFIELD);
 		new(L) NeuralNet::ThinVector(o[i]);
 		lua_rawset(L, -3);
-#endif
-		return 1;
 	}
 
-	static int __newindex(lua_State * L, Type & o) {
-		if (lua_type(L, 2) != LUA_TNUMBER) {
-			luaL_error(L, "can only write to index elements");
-		}
-		int i = lua_tointeger(L, 2);
-		--i;
-		// using 1-based indexing. sue me.
-		if (i < 0 || i >= o.size.x) {
-			luaL_error(L, "index %d is out of bounds", i+1);
-		}
-		// will error if you try to write a non-prim
-		// same as above
-#if 0
-		auto row = o[i];
-		LuaRW<NeuralNet::ThinVector<Real>>::read(L, 3, row);
-#else
+	static void IndexAccessWrite(lua_State * L, Type & o, int i) {
 		lua_newtable(L);
 		luaL_setmetatable(L, Info<NeuralNet::ThinVector<Real>>::mtname.data());
 		lua_pushliteral(L, PTRFIELD);
 		new(L) NeuralNet::ThinVector(o[i]);
 		lua_rawset(L, -3);
-#endif
-		return 1;
 	}
 
-
-	// Matrix # __len is its height
-	// Matrix[i] will return the ThinVector of the row
-	static int __len(lua_State * L, Type & o) {
-		lua_pushinteger(L, o.size.x);
-		return 1;
+	static int IndexLen(Type & o) {
+		return o.size.x;
 	}
 
 	static auto & getFields() {

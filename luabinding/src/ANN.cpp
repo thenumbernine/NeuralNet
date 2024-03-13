@@ -144,6 +144,10 @@ struct InfoStructBase {
 	}
 
 	static void mtinit(lua_State * L) {
+		for (auto & pair : Info<T>::getFields()) {
+			pair.second->mtinit(L);
+		}
+
 		if (luaL_newmetatable(L, Info<T>::mtname.data())) {
 			// not supported in luajit ...
 			lua_pushstring(L, Info<T>::mtname.data());
@@ -177,14 +181,10 @@ struct InfoStructBase {
 			// ok now let's give the metatable a metatable, so if someone calls it, it'll call the ctor
 			if constexpr (has_mt_ctor_v<Info<T>>) {
 				initMtCtor(L);
+				lua_setmetatable(L, -2);
 			}
-			lua_setmetatable(L, -2);
 		}
 		lua_pop(L, 1);
-	
-		for (auto & pair : Info<T>::getFields()) {
-			pair.second->mtinit(L);
-		}
 	}
 
 	// default behavior.  child template-specializations can override this.
@@ -227,7 +227,19 @@ struct LuaRW {
 		// but lightuserdata has no metatable
 		// so it'll have to be a new lua table that points back to this
 		lua_newtable(L);
+#if 1
 		luaL_setmetatable(L, Info<T>::mtname.data());
+#endif
+#if 0 //isn't this supposed to do the same as luaL_setmetatable ?
+		luaL_getmetatable(L, Info<T>::mtname.data());
+std::cout << "metatable " << Info<T>::mtname << " type " << lua_type(L, -1) << std::endl;
+		lua_setmetatable(L, -2);
+#endif
+#if 0 // this say ssomething is there, but it always returns nil
+		lua_getmetatable(L, -1);
+std::cout << "metatable " << Info<T>::mtname << " type " << lua_type(L, -1) << std::endl;
+		lua_pop(L, 1);
+#endif
 		lua_pushliteral(L, PTRFIELD);
 		lua_pushlightuserdata(L, &v);
 		lua_rawset(L, -3);
@@ -296,12 +308,24 @@ struct Field : public FieldBase<typename Common::MemberPointer<decltype(field)>:
 // infos for stl
 
 template<typename Elem>
-struct Info<std::vector<Elem>> : public InfoStructBase<std::vector<Elem>> {
+struct Info<std::vector<Elem>> 
+: public InfoStructBase<std::vector<Elem>> {
+	using Super = InfoStructBase<std::vector<Elem>>;
 	using T = std::vector<Elem>;
 
 	static constexpr std::string_view strpre = "std::vector<";
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Elem>::mtname, strsuf>>;
+
+	// vector needs Elem's metatable initialized
+	static void mtinit(lua_State * L) {
+		// same as Feld::mtinit, only init the type if it's a class ...
+		if constexpr (std::is_class_v<Elem>) {
+			Info<Elem>::mtinit(L);
+		}
+		
+		Super::mtinit(L);
+	}
 
 	static int __index(lua_State * L, T & o) {
 		if (lua_type(L, 2) != LUA_TNUMBER) {
@@ -468,7 +492,6 @@ struct Info<NeuralNet::ANN<Real>>
 		lua_rawset(L, -3);
 		return 1;
 	}
-
 
 	static auto & getFields() {
 		static auto field_dt = Field<&T::dt>();

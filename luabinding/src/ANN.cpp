@@ -338,12 +338,12 @@ struct Info<NeuralNet::Layer<Real>>
 	}
 };
 
-
 template<typename Real>
 struct Info<NeuralNet::ANN<Real>> 
 : public InfoStructBase<NeuralNet::ANN<Real>> {
+	using Super = InfoStructBase<NeuralNet::ANN<Real>>;
 	using T = NeuralNet::ANN<Real>;
-	
+
 	static constexpr std::string_view strpre = "NeuralNet::ANN<";
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
@@ -351,14 +351,14 @@ struct Info<NeuralNet::ANN<Real>>
 	static constexpr luaL_Reg mtfields[] = {
 		{"__index", ::__index<T>},
 		{"__newindex", ::__newindex<T>},
-		{"__call", ::__call<T>},
 		{nullptr, nullptr},
 	};
 
 	// call metatable = create new object
 	// the member object access is lightuserdata i.e. no metatable ,so I'm wrapping it in a Lua table
-	// so for consistency I'll do the same here ...
-	static int __call(lua_State * L, T * o) {
+	// so for consistency I'll do the same with dense-userdata ...
+	static int mt_new(lua_State * L) {
+		// 1st arg is the metatable ... or its another ANN
 		// stack: 1st arg should be the mt, since its call operator is the ann ctor
 		int const nargs = lua_gettop(L);
 		std::vector<int> layerSizes;
@@ -368,11 +368,23 @@ struct Info<NeuralNet::ANN<Real>>
 
 		lua_newtable(L);
 		luaL_setmetatable(L, Info<T>::mtname.data());
-		new (L) T(layerSizes);
+		new(L) T(layerSizes);
 		lua_setfield(L, -2, "ptr");
 		return 1;
 	}
 	
+	static void mtinit(lua_State * L) {
+		//init mt ...
+		Super::mtinit(L);
+	
+		//then add call operator for ctor
+		luaL_getmetatable(L, mtname.data());
+		lua_pushcfunction(L, mt_new);
+		lua_setfield(L, -2, "new");
+		lua_pop(L, 1);
+	}
+
+
 	static auto & getFields() {
 		static auto field_dt = Field<&T::dt>();
 		//static auto field_layers = Field<&T::layers>();
@@ -400,9 +412,10 @@ struct Info<NeuralNet::ANN<Real>>
 	}
 };
 
+extern "C" {
 int luaopen_NeuralNetLua(lua_State * L) {
 	Info<NeuralNet::ANN<double>>::mtinit(L);
-
 	luaL_getmetatable(L, Info<NeuralNet::ANN<double>>::mtname.data());
 	return 1;
+}
 }

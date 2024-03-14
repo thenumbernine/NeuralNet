@@ -247,16 +247,16 @@ struct ANN {
 
 
 	void feedForward() {
-		int const numLayers = (int)layers.size();
-		for (int k = 0; k < numLayers; ++k) {
+		auto const numLayers = layers.size();
+		for (size_t k = 0; k < numLayers; ++k) {
 			auto & layer = layers[k];
 
-			const auto & w = layer.w;
-			auto [height, width] = w.size;
-			assert(width > 0);
+			auto const & w = layer.w;
+			auto const height = w.size.x;
+			assert(w.size.y/*width*/ > 0);
 			assert(height > 0);
-			auto [storageHeight, storageWidth] = w.storageSize;
-			assert(roundup<8>(height) == storageHeight);
+			auto const storageWidth = w.storageSize.y;
+			assert(roundup<8>(height) == w.storageSize.x/*storageHeight*/);
 
 			const auto & x = layer.x;
 			assert(x.storageSize == storageWidth);
@@ -266,19 +266,19 @@ struct ANN {
 			auto & net = layer.net;
 			assert(net.size == height);
 
-			assert(width == x.size+1);
+			assert(w.size.y/*width*/ == x.size+1);
 			assert(height == net.size);
 
 			auto & y = k == numLayers-1 ? output : layers[k+1].x;
 			assert(y.storageSize == net.storageSize);
-			assert(y.storageSize == roundup<8>(storageHeight+1));
+			assert(y.storageSize == roundup<8>(w.storageSize.x/*storageHeight*/+1));
 
 			auto const & activation = layer.activation;
 			auto wij = w.v.data();
 			auto xptr = x.v.data();
-			auto xendptr = xptr + storageWidth;
+			auto const xendptr = xptr + storageWidth;
 			auto neti = net.v.data();	//net.v.begin() ? which is faster?
-			auto netiend = neti + height;
+			auto const netiend = neti + height;
 			auto yi = y.v.data();
 
 			for (; neti < netiend;

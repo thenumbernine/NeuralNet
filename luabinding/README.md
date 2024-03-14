@@ -26,3 +26,6 @@ That means 1-based indexes.  yes.
 - `ann:clearBatch()`
 
 Driven by some Lua C++ automatic binding / member object and method wrapper generation that is pretty concise (500 loc or so).
+TODO's for that:
+- needs member-method-returns-ref to work
+- needs pass-by-value methods to push copies of full userdata instead of light userdata

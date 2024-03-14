@@ -42,10 +42,10 @@ struct Vector {
 	Real normL1() const {
 		auto vi = v.data();
 		auto vend = vi + size;
-		Real sum = fabs(*vi);
+		Real sum = std::fabs(*vi);
 		++vi;
 		for (; vi < vend; ++vi) {
-			sum += fabs(*vi);
+			sum += std::fabs(*vi);
 		}
 		return sum;
 	}
@@ -74,10 +74,10 @@ struct ThinVector {
 	Real normL1() const {
 		auto vi = v;
 		auto vend = vi + size;
-		Real sum = fabs(*vi);
+		Real sum = std::fabs(*vi);
 		++vi;
 		for (; vi < vend; ++vi) {
-			sum += fabs(*vi);
+			sum += std::fabs(*vi);
 		}
 		return sum;
 	}
@@ -118,7 +118,7 @@ struct Matrix {
 		for (int i = 0; i < height; ++i) {
 			int j = 0;
 			for (; j < width; ++j, ++ij) {
-				sum += fabs(v[ij]);
+				sum += std::fabs(v[ij]);
 			}
 			j += storageWidth - width;
 			ij += storageWidth - width;

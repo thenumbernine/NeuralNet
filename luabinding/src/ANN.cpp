@@ -275,21 +275,22 @@ int luaopen_NeuralNetLua(lua_State * L) {
 	// don't be shy, add some int types while you're at it
 	using types = std::tuple<
 		NeuralNet::ANN<float>,
-		NeuralNet::ANN<double>
+		NeuralNet::ANN<double>,
+		NeuralNet::ANN<long double>
 #if defined(__STDCPP_FLOAT16_T__)
-//		,NeuralNet::ANN<std::float16_t>
+		,NeuralNet::ANN<std::float16_t>
 #endif
 #if defined(__STDCPP_FLOAT32_T__)
-//		,NeuralNet::ANN<std::float32_t>
+		,NeuralNet::ANN<std::float32_t>
 #endif
 #if defined(__STDCPP_FLOAT64_T__)
-//		,NeuralNet::ANN<std::float64_t>
+		,NeuralNet::ANN<std::float64_t>
 #endif
 #if defined(__STDCPP_FLOAT128_T__)
-//		,NeuralNet::ANN<std::float128_t>
+		,NeuralNet::ANN<std::float128_t>
 #endif
 #if defined(__STDCPP_BFLOAT16_T__)
-//		,NeuralNet::ANN<std::bfloat16_t>
+		,NeuralNet::ANN<std::bfloat16_t>
 #endif
 	>;
 

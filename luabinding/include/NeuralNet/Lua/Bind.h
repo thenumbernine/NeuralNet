@@ -37,6 +37,10 @@ struct Bind<double> {
 	static constexpr std::string_view mtname = "double";
 };
 
+template<>
+struct Bind<long double> {
+	static constexpr std::string_view mtname = "long double";
+};
 
 // needs to be a macro and not a C++ typed expression for lua's pushliteral to work
 #define LUACXX_BIND_PTRFIELD "ptr"
@@ -266,10 +270,10 @@ template<typename T>
 requires (std::is_floating_point_v<T>)
 struct LuaRW<T> {
 	static void push(lua_State * L, T v) {
-		lua_pushnumber(L, v);
+		lua_pushnumber(L, (lua_Number)v);
 	}
 	static T read(lua_State * L, int index) {
-		return lua_tonumber(L, index);
+		return (T)lua_tonumber(L, index);
 	}
 };
 

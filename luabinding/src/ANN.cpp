@@ -2,72 +2,14 @@
 #include "NeuralNet/ANN.h"
 #include <lua.hpp>
 #include <type_traits>
-
-/////////////////////////////////
-// https://stackoverflow.com/a/59448568/2714073
-
-namespace impl
-{
-/// Base declaration of our constexpr string_view concatenation helper
-template <std::string_view const&, typename, std::string_view const&, typename>
-struct concat;
-
-/// Specialisation to yield indices for each char in both provided string_views,
-/// allows us flatten them into a single char array
-template <std::string_view const& S1,
-          std::size_t... I1,
-          std::string_view const& S2,
-          std::size_t... I2>
-struct concat<S1, std::index_sequence<I1...>, S2, std::index_sequence<I2...>>
-{
-  static constexpr const char value[]{S1[I1]..., S2[I2]..., 0};
-};
-} // namespace impl
-
-/// Base definition for compile time joining of strings
-template <std::string_view const&...> struct join;
-
-/// When no strings are given, provide an empty literal
-template <>
-struct join<>
-{
-  static constexpr std::string_view value = "";
-};
-
-/// Base case for recursion where we reach a pair of strings, we concatenate
-/// them to produce a new constexpr string
-template <std::string_view const& S1, std::string_view const& S2>
-struct join<S1, S2>
-{
-  static constexpr std::string_view value =
-    impl::concat<S1,
-                 std::make_index_sequence<S1.size()>,
-                 S2,
-                 std::make_index_sequence<S2.size()>>::value;
-};
-
-/// Main recursive definition for constexpr joining, pass the tail down to our
-/// base case specialisation
-template <std::string_view const& S, std::string_view const&... Rest>
-struct join<S, Rest...>
-{
-  static constexpr std::string_view value =
-    join<S, join<Rest...>::value>::value;
-};
-
-/// Join constexpr string_views to produce another constexpr string_view
-template <std::string_view const&... Strs>
-static constexpr auto join_v = join<Strs...>::value;
-
-/////////////////////////////////
-
+#include "NeuralNetLua/join.h"
 
 void * operator new(size_t size, lua_State * L) {
 	return lua_newuserdata(L, size);
 }
 
 template<typename Type>
-struct Info;
+struct LuaBind;
 
 #define PTRFIELD "ptr"
 
@@ -79,38 +21,38 @@ static T * lua_getptr(lua_State * L, int index) {
 	if (!lua_isuserdata(L, -1)) {	// both kinds of userdata plz
 		luaL_checktype(L, -1, LUA_TUSERDATA);	// but i like their error so
 	}
-	// verify metatable is Info<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
+	// verify metatable is LuaBind<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
 	T * o = (T*)lua_touserdata(L, -1);
 	lua_pop(L, 1);
 	if (!o) luaL_error(L, "tried to index a null pointer");
 	return o;
 }
 
-// I could just use the Info static methods themselves, but meh, I cast the object here
+// I could just use the LuaBind static methods themselves, but meh, I cast the object here
 
 template<typename T>
 static inline int __index(lua_State * L) {
-	return Info<T>::__index(L, *lua_getptr<T>(L, 1));
+	return LuaBind<T>::__index(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __newindex(lua_State * L) {
-	return Info<T>::__newindex(L, *lua_getptr<T>(L, 1));
+	return LuaBind<T>::__newindex(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __len(lua_State * L) {
-	return Info<T>::__len(L, *lua_getptr<T>(L, 1));
+	return LuaBind<T>::__len(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __call(lua_State * L) {
-	return Info<T>::__call(L, *lua_getptr<T>(L, 1));
+	return LuaBind<T>::__call(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __tostring(lua_State * L) {
-	return Info<T>::__tostring(L, *lua_getptr<T>(L, 1));
+	return LuaBind<T>::__tostring(L, *lua_getptr<T>(L, 1));
 }
 
 
@@ -118,7 +60,7 @@ static inline int __tostring(lua_State * L) {
 // infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
 
 template<>
-struct Info<double> {
+struct LuaBind<double> {
 	static constexpr std::string_view mtname = "double";
 };
 
@@ -131,55 +73,55 @@ template<typename T> constexpr bool has__tostring_v = requires(T const & t) { t.
 template<typename T> constexpr bool has_mt_ctor_v = requires(T const & t) { t.mt_ctor; };
 
 template<typename T>
-struct InfoStructBase {
+struct LuaBindStructBase {
 
 	// add the class constructor as the call operator of the metatable
 	static void initMtCtor(lua_State * L) {
 		static constexpr std::string_view suffix = " metatable";
-		static constexpr std::string_view mtname = join_v<Info<T>::mtname, suffix>;
+		static constexpr std::string_view mtname = join_v<LuaBind<T>::mtname, suffix>;
 		if (!luaL_newmetatable(L, mtname.data())) return;
 
-		lua_pushcfunction(L, Info<T>::mt_ctor);
+		lua_pushcfunction(L, LuaBind<T>::mt_ctor);
 		lua_setfield(L, -2, "__call");
 	}
 
 	static void mtinit(lua_State * L) {
-		for (auto & pair : Info<T>::getFields()) {
+		for (auto & pair : LuaBind<T>::getFields()) {
 			pair.second->mtinit(L);
 		}
 
-		if (luaL_newmetatable(L, Info<T>::mtname.data())) {
+		if (luaL_newmetatable(L, LuaBind<T>::mtname.data())) {
 			// not supported in luajit ...
-			lua_pushstring(L, Info<T>::mtname.data());
+			lua_pushstring(L, LuaBind<T>::mtname.data());
 			lua_setfield(L, -2, "__name");
 
-			if constexpr (has__index_v<Info<T>>) {
+			if constexpr (has__index_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__index<T>);
 				lua_setfield(L, -2, "__index");
 			}
 
-			if constexpr (has__newindex_v<Info<T>>) {
+			if constexpr (has__newindex_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__newindex<T>);
 				lua_setfield(L, -2, "__newindex");
 			}
 
-			if constexpr (has__len_v<Info<T>>) {
+			if constexpr (has__len_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__len<T>);
 				lua_setfield(L, -2, "__len");
 			}
 
-			if constexpr (has__call_v<Info<T>>) {
+			if constexpr (has__call_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__call<T>);
 				lua_setfield(L, -2, "__call");
 			}
 
-			if constexpr (has__tostring_v<Info<T>>) {
+			if constexpr (has__tostring_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__tostring<T>);
 				lua_setfield(L, -2, "__tostring");
 			}
 
 			// ok now let's give the metatable a metatable, so if someone calls it, it'll call the ctor
-			if constexpr (has_mt_ctor_v<Info<T>>) {
+			if constexpr (has_mt_ctor_v<LuaBind<T>>) {
 				initMtCtor(L);
 				lua_setmetatable(L, -2);
 			}
@@ -191,7 +133,7 @@ struct InfoStructBase {
 
 	static int __index(lua_State * L, T & o) {
 		char const * const k = lua_tostring(L, 2);
-		auto const & fields = Info<T>::getFields();
+		auto const & fields = LuaBind<T>::getFields();
 		auto iter = fields.find(k);
 		if (iter == fields.end()) {
 			lua_pushnil(L);
@@ -203,7 +145,7 @@ struct InfoStructBase {
 
 	static int __newindex(lua_State * L, T & o) {
 		char const * const k = lua_tostring(L, 2);
-		auto const & fields = Info<T>::getFields();
+		auto const & fields = LuaBind<T>::getFields();
 		auto iter = fields.find(k);
 		if (iter == fields.end()) {
 			luaL_error(L, "sorry, this table cannot accept new members");
@@ -213,7 +155,7 @@ struct InfoStructBase {
 	}
 
 	static int __tostring(lua_State * L, T & o) {
-		lua_pushfstring(L, "%s: 0x%x", Info<T>::mtname.data(), &o);
+		lua_pushfstring(L, "%s: 0x%x", LuaBind<T>::mtname.data(), &o);
 		return 1;
 	}
 };
@@ -228,16 +170,16 @@ struct LuaRW {
 		// so it'll have to be a new lua table that points back to this
 		lua_newtable(L);
 #if 1	// if the metatable isn't there then it won't be set
-		luaL_setmetatable(L, Info<T>::mtname.data());
+		luaL_setmetatable(L, LuaBind<T>::mtname.data());
 #endif
 #if 0 	//isn't this supposed to do the same as luaL_setmetatable ?
-		luaL_getmetatable(L, Info<T>::mtname.data());
-std::cout << "metatable " << Info<T>::mtname << " type " << lua_type(L, -1) << std::endl;
+		luaL_getmetatable(L, LuaBind<T>::mtname.data());
+std::cout << "metatable " << LuaBind<T>::mtname << " type " << lua_type(L, -1) << std::endl;
 		lua_setmetatable(L, -2);
 #endif
 #if 0 // this say ssomething is there, but it always returns nil
 		lua_getmetatable(L, -1);
-std::cout << "metatable " << Info<T>::mtname << " type " << lua_type(L, -1) << std::endl;
+std::cout << "metatable " << LuaBind<T>::mtname << " type " << lua_type(L, -1) << std::endl;
 		lua_pop(L, 1);
 #endif
 		lua_pushliteral(L, PTRFIELD);
@@ -283,27 +225,104 @@ struct FieldBase {
 	virtual void mtinit(lua_State * L) const = 0;
 };
 
+// should this go in Common/MemberPointer.h?
+// what's the better way to do this?
+template<typename T>
+struct MemberBaseClass {
+	static decltype(auto) value() {
+		if constexpr(std::is_member_object_pointer_v<T>) {
+			using type = typename Common::MemberPointer<T>::Class;
+			return (type*)nullptr;
+		} else if constexpr (std::is_member_function_pointer_v<T>) {
+			using type = typename Common::MemberMethodPointer<T>::Class;
+			return (type*)nullptr;
+		} else {
+			return nullptr;
+		}
+	}
+	using type = typename std::remove_pointer_t<decltype(value())>;\
+};
+
+#error todo
+template<auto field>
+int memberMethodWrapper(lua_State * L) {
+	auto o = lua_getptr(L, 1);
+	LuaRW<decltype(result)>::push(L, o->*field(
+		LuaToCArgs<Args...>(L, 2)...
+	));
+	return 1;
+}
+
 //generic field is an object, exposed as lightuserdata wrapped in a table
 template<auto field>
-struct Field : public FieldBase<typename Common::MemberPointer<decltype(field)>::Class> {
-	using MP = Common::MemberPointer<decltype(field)>;
-	using Base = typename MP::Class;
-	using Value = typename MP::FieldType;
+struct Field 
+: public FieldBase<typename MemberBaseClass<decltype(field)>::type>
+{
+	using T = decltype(field);
+	using Base = typename MemberBaseClass<T>::type;
 
 	virtual void push(Base & obj, lua_State * L) const override {
-		LuaRW<Value>::push(L, obj.*field);
+		if constexpr(std::is_member_object_pointer_v<T>) {
+			using Value = typename Common::MemberPointer<T>::FieldType;
+			LuaRW<Value>::push(L, obj.*field);
+		} else if (std::is_member_function_pointer_v<T>) {
+			//push a c function that calls the member method (and transforms all the arguments)
+			lua_pushcfunction(L, memberMethodWrapper<field>);
+		}
 	}
 
 	virtual void read(Base & obj, lua_State * L, int index) const override {
-		 LuaRW<Value>::read(L, index, obj.*field);
+		if constexpr(std::is_member_object_pointer_v<T>) {
+			using Value = typename Common::MemberPointer<T>::FieldType;
+			LuaRW<Value>::read(L, index, obj.*field);
+		} else if (std::is_member_function_pointer_v<T>) {
+			luaL_error(L, "this field is read only");
+		}
 	}
 
 	virtual void mtinit(lua_State * L) const override {
-		if constexpr (std::is_class_v<Value>) {
-			Info<Value>::mtinit(L);
+		if constexpr(std::is_member_object_pointer_v<T>) {
+			using Value = typename Common::MemberPointer<T>::FieldType;
+			if constexpr (std::is_class_v<Value>) {
+				LuaBind<Value>::mtinit(L);
+			}
+		} else if (std::is_member_function_pointer_v<T>) {
+			using Return = typename Common::MemberMethodPointer<T>::Return;
+			if constexpr (std::is_class_v<Return>) {
+				LuaBind<Return>::mtinit(L);
+			}
+			// need to add arg types too or nah?  nah... returns are returned, so they could be a first creation of that type. not args. 
 		}
 	}
 };
+
+#if 0
+template<auto field>
+requires (std::is_member_function_pointer_v<decltype(field)>)
+struct Field : public FieldBase<
+	typename Common::MemberMethodPointer<decltype(field)>::Class
+> {
+	using MP = Common::MemberMethodPointer<decltype(field);
+	using Base = typename MP::Class;
+	using Return = typename MP::Return;
+
+	virtual void push(Base & obj, lua_State * L) const override {
+		//LuaRW<Return>::push(L, obj.*field);
+		lua_pushcfunction(L, field);
+	}
+
+	virtual void read(Base & obj, lua_State * L, int index) const override {
+		//LuaRW<Return>::read(L, index, obj.*field);
+		luaL_error(L, "field is read-only");
+	}
+
+	virtual void mtinit(lua_State * L) const override {
+		if constexpr (std::is_class_v<Return>) {
+			LuaBind<Return>::mtinit(L);
+		}
+	}
+};
+#endif
 
 // generalized __len, __index, __newindex access
 
@@ -364,20 +383,20 @@ struct IndexAccess : IndexAccessReadWrite<Child, Type, Elem> {
 // infos for stl
 
 template<typename Elem>
-struct Info<std::vector<Elem>>
-:	public InfoStructBase<std::vector<Elem>>,
+struct LuaBind<std::vector<Elem>>
+:	public LuaBindStructBase<std::vector<Elem>>,
 	IndexAccess<
-		Info<std::vector<Elem>>, 
+		LuaBind<std::vector<Elem>>, 
 		std::vector<Elem>,
 		Elem
 	>
 {
-	using Super = InfoStructBase<std::vector<Elem>>;
+	using Super = LuaBindStructBase<std::vector<Elem>>;
 	using Type = std::vector<Elem>;
 
 	static constexpr std::string_view strpre = "std::vector<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Elem>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = join_v<strpre, join_v<LuaBind<Elem>::mtname, strsuf>>;
 
 	// vector needs Elem's metatable initialized
 	static void mtinit(lua_State * L) {
@@ -386,7 +405,7 @@ struct Info<std::vector<Elem>>
 		//init all subtypes
 		//this test is same as in Field::mtinit
 		if constexpr (std::is_class_v<Elem>) {
-			Info<Elem>::mtinit(L);
+			LuaBind<Elem>::mtinit(L);
 		}
 	}
 
@@ -410,10 +429,10 @@ struct Info<std::vector<Elem>>
 // info for ANN structs:
 
 template<typename Real>
-struct Info<NeuralNet::Vector<Real>>
-:	public InfoStructBase<NeuralNet::Vector<Real>>,
+struct LuaBind<NeuralNet::Vector<Real>>
+:	public LuaBindStructBase<NeuralNet::Vector<Real>>,
 	IndexAccess<
-		Info<NeuralNet::Vector<Real>>,
+		LuaBind<NeuralNet::Vector<Real>>,
 		NeuralNet::Vector<Real>,
 		Real
 	>
@@ -422,7 +441,7 @@ struct Info<NeuralNet::Vector<Real>>
 
 	static constexpr std::string_view strpre = "NeuralNet::Vector<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = join_v<strpre, join_v<LuaBind<Real>::mtname, strsuf>>;
 
 	static Real & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
@@ -443,20 +462,20 @@ struct Info<NeuralNet::Vector<Real>>
 };
 
 template<typename Real>
-struct Info<NeuralNet::ThinVector<Real>>
-:	public InfoStructBase<NeuralNet::ThinVector<Real>>,
+struct LuaBind<NeuralNet::ThinVector<Real>>
+:	public LuaBindStructBase<NeuralNet::ThinVector<Real>>,
 	IndexAccess<
-		Info<NeuralNet::ThinVector<Real>>,
+		LuaBind<NeuralNet::ThinVector<Real>>,
 		NeuralNet::ThinVector<Real>,
 		Real
 	>
 {
-	using Super = InfoStructBase<NeuralNet::ThinVector<Real>>;
+	using Super = LuaBindStructBase<NeuralNet::ThinVector<Real>>;
 	using Type = NeuralNet::ThinVector<Real>;
 
 	static constexpr std::string_view strpre = "NeuralNet::ThinVector<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = join_v<strpre, join_v<LuaBind<Real>::mtname, strsuf>>;
 
 	static Real & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
@@ -478,33 +497,33 @@ struct Info<NeuralNet::ThinVector<Real>>
 
 
 template<typename Real>
-struct Info<NeuralNet::Matrix<Real>>
-:	public InfoStructBase<NeuralNet::Matrix<Real>>,
+struct LuaBind<NeuralNet::Matrix<Real>>
+:	public LuaBindStructBase<NeuralNet::Matrix<Real>>,
 	IndexAccessReadWrite<
-		Info<NeuralNet::Matrix<Real>>,
+		LuaBind<NeuralNet::Matrix<Real>>,
 		NeuralNet::Matrix<Real>,
 		Real
 	>
 {
-	using Super = InfoStructBase<NeuralNet::Matrix<Real>>;
+	using Super = LuaBindStructBase<NeuralNet::Matrix<Real>>;
 	using Type = NeuralNet::Matrix<Real>;
 
 	static constexpr std::string_view strpre = "NeuralNet::Matrix<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = join_v<strpre, join_v<LuaBind<Real>::mtname, strsuf>>;
 
 	// vector needs Elem's metatable initialized
 	static void mtinit(lua_State * L) {
 		Super::mtinit(L);
 
 		//init all subtypes
-		Info<NeuralNet::ThinVector<Real>>::mtinit(L);
+		LuaBind<NeuralNet::ThinVector<Real>>::mtinit(L);
 	}
 
 	// create a full-userdata of the ThinVector so that it sticks around when Lua tries to access it
 	static void IndexAccessRead(lua_State * L, Type & o, int i) {
 		lua_newtable(L);
-		luaL_setmetatable(L, Info<NeuralNet::ThinVector<Real>>::mtname.data());
+		luaL_setmetatable(L, LuaBind<NeuralNet::ThinVector<Real>>::mtname.data());
 		lua_pushliteral(L, PTRFIELD);
 		new(L) NeuralNet::ThinVector(o[i]);
 		lua_rawset(L, -3);
@@ -512,7 +531,7 @@ struct Info<NeuralNet::Matrix<Real>>
 
 	static void IndexAccessWrite(lua_State * L, Type & o, int i) {
 		lua_newtable(L);
-		luaL_setmetatable(L, Info<NeuralNet::ThinVector<Real>>::mtname.data());
+		luaL_setmetatable(L, LuaBind<NeuralNet::ThinVector<Real>>::mtname.data());
 		lua_pushliteral(L, PTRFIELD);
 		new(L) NeuralNet::ThinVector(o[i]);
 		lua_rawset(L, -3);
@@ -530,13 +549,13 @@ struct Info<NeuralNet::Matrix<Real>>
 
 
 template<typename Real>
-struct Info<NeuralNet::Layer<Real>>
-: public InfoStructBase<NeuralNet::Layer<Real>> {
+struct LuaBind<NeuralNet::Layer<Real>>
+: public LuaBindStructBase<NeuralNet::Layer<Real>> {
 	using Type = NeuralNet::Layer<Real>;
 
 	static constexpr std::string_view strpre = "NeuralNet::Layer<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = join_v<strpre, join_v<LuaBind<Real>::mtname, strsuf>>;
 
 	static auto & getFields() {
 		static auto field_x = Field<&Type::x>();
@@ -566,21 +585,21 @@ struct Info<NeuralNet::Layer<Real>>
 };
 
 template<typename Real>
-struct Info<NeuralNet::ANN<Real>>
-: public InfoStructBase<NeuralNet::ANN<Real>> {
-	using Super = InfoStructBase<NeuralNet::ANN<Real>>;
+struct LuaBind<NeuralNet::ANN<Real>>
+: public LuaBindStructBase<NeuralNet::ANN<Real>> {
+	using Super = LuaBindStructBase<NeuralNet::ANN<Real>>;
 	using Type = NeuralNet::ANN<Real>;
 
 	static constexpr std::string_view strpre = "NeuralNet::ANN<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<Info<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = join_v<strpre, join_v<LuaBind<Real>::mtname, strsuf>>;
 
 	// call metatable = create new object
 	// the member object access is lightuserdata i.e. no metatable ,so I'm wrapping it in a Lua table
 	// so for consistency I'll do the same with dense-userdata ...
 	static int mt_ctor(lua_State * L) {
 		// TODO would be nice to abstract this into ctor arg interpretation
-		// then I could move mt_ctor to the InfoBase parent
+		// then I could move mt_ctor to the LuaBindStructBase parent
 		// 1st arg is the metatable ... or its another ANN
 		// stack: 1st arg should be the mt, since its call operator is the ann ctor
 		int const nargs = lua_gettop(L);
@@ -590,7 +609,7 @@ struct Info<NeuralNet::ANN<Real>>
 		}
 
 		lua_newtable(L);
-		luaL_setmetatable(L, Info<Type>::mtname.data());
+		luaL_setmetatable(L, LuaBind<Type>::mtname.data());
 		lua_pushliteral(L, PTRFIELD);
 		new(L) Type(layerSizes);
 		lua_rawset(L, -3);
@@ -603,7 +622,7 @@ struct Info<NeuralNet::ANN<Real>>
 		static auto field_useBatch = Field<&Type::useBatch>();
 		static auto field_batchCounter = Field<&Type::batchCounter>();
 		static auto field_totalBatchCounter = Field<&Type::totalBatchCounter>();
-		//static auto field_feedForward = Field<&Type::feedForward>();
+		static auto field_feedForward = Field<&Type::feedForward>();
 		//static auto field_calcError = Field<&Type::calcError>();
 		//static auto field_backPropagate = Field<&Type::backPropagate>();
 		//static auto field_updateBatch = Field<&Type::updateBatch>();
@@ -614,7 +633,7 @@ struct Info<NeuralNet::ANN<Real>>
 			{"useBatch", &field_useBatch},
 			{"batchCounter", &field_batchCounter},
 			{"totalBatchCounter", &field_totalBatchCounter},
-			//{"feedForward", &field_feedForward},
+			{"feedForward", &field_feedForward},
 			//{"calcError", &field_calcError},
 			//{"backPropagate", &field_backPropagate},
 			//{"updateBatch", &field_updateBatch},
@@ -626,8 +645,8 @@ struct Info<NeuralNet::ANN<Real>>
 
 extern "C" {
 int luaopen_NeuralNetLua(lua_State * L) {
-	Info<NeuralNet::ANN<double>>::mtinit(L);
-	luaL_getmetatable(L, Info<NeuralNet::ANN<double>>::mtname.data());
+	LuaBind<NeuralNet::ANN<double>>::mtinit(L);
+	luaL_getmetatable(L, LuaBind<NeuralNet::ANN<double>>::mtname.data());
 	return 1;
 }
 }

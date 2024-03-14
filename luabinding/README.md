@@ -29,3 +29,5 @@ Driven by some Lua C++ automatic binding / member object and method wrapper gene
 TODO's for that:
 - needs member-method-returns-ref to work
 - needs pass-by-value methods to push copies of full userdata instead of light userdata
+- ipairs for IndexAccess classes, pairs for everyone
+- expose C++ static members in the obj metatables (esp so the Lua metatable instances can access them, but so can the outside world via the metatable)

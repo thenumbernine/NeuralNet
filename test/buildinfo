@@ -1,6 +1,8 @@
 distName='test'
 distType='app'
 compileFlags = compileFlags .. ' -O3'
+--compileFlags = compileFlags .. ' -Ofast'
+--compileFlags = compileFlags .. ' -Ofast -march=native'
 depends:append{
 	'..',
 	'../../Common',

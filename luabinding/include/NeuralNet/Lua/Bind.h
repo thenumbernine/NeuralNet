@@ -20,12 +20,13 @@ namespace Lua {
 template<typename Type>
 struct LuaBind;
 
-#define PTRFIELD "ptr"
+// needs to be a macro and not a C++ typed expression for lua's pushliteral to work
+#define LUACXX_BIND_PTRFIELD "ptr"
 
 template<typename T>
 static T * lua_getptr(lua_State * L, int index) {
 	luaL_checktype(L, index, LUA_TTABLE);
-	lua_pushliteral(L, PTRFIELD);
+	lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 	lua_rawget(L, index);
 	if (!lua_isuserdata(L, -1)) {	// both kinds of userdata plz
 		luaL_checktype(L, -1, LUA_TUSERDATA);	// but i like their error so
@@ -229,7 +230,7 @@ std::cout << "metatable " << LuaBind<T>::mtname << " type " << lua_type(L, -1) <
 std::cout << "metatable " << LuaBind<T>::mtname << " type " << lua_type(L, -1) << std::endl;
 		lua_pop(L, 1);
 #endif
-		lua_pushliteral(L, PTRFIELD);
+		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 		lua_pushlightuserdata(L, &v);
 		lua_rawset(L, -3);
 	}

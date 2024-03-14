@@ -101,7 +101,7 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::Matrix<Real>>
 	static void IndexAccessRead(lua_State * L, Type & o, int i) {
 		lua_newtable(L);
 		luaL_setmetatable(L, NeuralNet::Lua::LuaBind<NeuralNet::ThinVector<Real>>::mtname.data());
-		lua_pushliteral(L, PTRFIELD);
+		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 		new(L) NeuralNet::ThinVector(o[i]);
 		lua_rawset(L, -3);
 	}
@@ -109,7 +109,7 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::Matrix<Real>>
 	static void IndexAccessWrite(lua_State * L, Type & o, int i) {
 		lua_newtable(L);
 		luaL_setmetatable(L, NeuralNet::Lua::LuaBind<NeuralNet::ThinVector<Real>>::mtname.data());
-		lua_pushliteral(L, PTRFIELD);
+		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 		new(L) NeuralNet::ThinVector(o[i]);
 		lua_rawset(L, -3);
 	}
@@ -187,7 +187,7 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 
 		lua_newtable(L);
 		luaL_setmetatable(L, NeuralNet::Lua::LuaBind<Type>::mtname.data());
-		lua_pushliteral(L, PTRFIELD);
+		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 		new(L) Type(layerSizes);
 		lua_rawset(L, -3);
 		return 1;

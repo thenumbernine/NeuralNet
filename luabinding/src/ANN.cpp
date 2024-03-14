@@ -2,7 +2,7 @@
 #include "NeuralNet/ANN.h"
 #include <lua.hpp>
 #include <type_traits>
-#include "NeuralNetLua/join.h"
+#include "NeuralNet/Lua/join.h"
 
 void * operator new(size_t size, lua_State * L) {
 	return lua_newuserdata(L, size);
@@ -56,6 +56,37 @@ static inline int __tostring(lua_State * L) {
 }
 
 
+// default behavior.  child template-specializations can override this.
+
+static int default__index(lua_State * L, T & o) {
+	char const * const k = lua_tostring(L, 2);
+	auto const & fields = LuaBind<T>::getFields();
+	auto iter = fields.find(k);
+	if (iter == fields.end()) {
+		lua_pushnil(L);
+		return 1;
+	}
+	iter->second->push(o, L);
+	return 1;
+}
+
+static int default__newindex(lua_State * L, T & o) {
+	char const * const k = lua_tostring(L, 2);
+	auto const & fields = LuaBind<T>::getFields();
+	auto iter = fields.find(k);
+	if (iter == fields.end()) {
+		luaL_error(L, "sorry, this table cannot accept new members");
+	}
+	iter->second->read(o, L, 3);
+	return 0;
+}
+
+static int default__tostring(lua_State * L, T & o) {
+	lua_pushfstring(L, "%s: 0x%x", LuaBind<T>::mtname.data(), &o);
+	return 1;
+}
+
+
 
 // infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
 
@@ -85,78 +116,86 @@ struct LuaBindStructBase {
 		lua_setfield(L, -2, "__call");
 	}
 
+	/*
+	initialize the metatable associated with this type
+	*/
 	static void mtinit(lua_State * L) {
+		auto const & mtname = LuaBind<T>::mtname;
+
 		for (auto & pair : LuaBind<T>::getFields()) {
 			pair.second->mtinit(L);
 		}
 
-		if (luaL_newmetatable(L, LuaBind<T>::mtname.data())) {
+		if (luaL_newmetatable(L, mtname.data())) {
 			// not supported in luajit ...
-			lua_pushstring(L, LuaBind<T>::mtname.data());
+			lua_pushstring(L, mtname.data());
 			lua_setfield(L, -2, "__name");
+
+			/*
+			for __index and __newindex I'm providing default behavior.
+			i used to provide it via static parent class method, but that emant overriding children ha to always 'using' to specify their own impl ver the aprent
+			so nw i'm just moving the defult outside the class
+			but the downside is - with the if constexpr check here - that there will always be an __index but maybe that wasla ways the case ...
+			*/
 
 			if constexpr (has__index_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__index<T>);
 				lua_setfield(L, -2, "__index");
+std::cout << "assigning " << mtname << " metatable __index" << std::endl;			
+			} else {
+				lua_pushcfunction(L, ::default__index<T>);
+				lua_setfield(L, -2, "__index");
+std::cout << "using default " << mtname << " metatable __index" << std::endl;			
 			}
 
 			if constexpr (has__newindex_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__newindex<T>);
 				lua_setfield(L, -2, "__newindex");
-			}
-
-			if constexpr (has__len_v<LuaBind<T>>) {
-				lua_pushcfunction(L, ::__len<T>);
-				lua_setfield(L, -2, "__len");
-			}
-
-			if constexpr (has__call_v<LuaBind<T>>) {
-				lua_pushcfunction(L, ::__call<T>);
-				lua_setfield(L, -2, "__call");
+std::cout << "assigning " << mtname << " metatable __newindex" << std::endl;			
+			} else {
+				lua_pushcfunction(L, ::default__newindex<T>);
+				lua_setfield(L, -2, "__newindex");
+std::cout << "using default " << mtname << " metatable __newindex" << std::endl;			
 			}
 
 			if constexpr (has__tostring_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__tostring<T>);
 				lua_setfield(L, -2, "__tostring");
+std::cout << "assigning " << mtname << " metatable __tostring" << std::endl;			
+			} else {
+				lua_pushcfunction(L, ::default__tostring<T>);
+				lua_setfield(L, -2, "__tostring");
+std::cout << "using default " << mtname << " metatable __tostring" << std::endl;			
+			}
+
+			// the rest of these are optional to provide
+
+			if constexpr (has__len_v<LuaBind<T>>) {
+				lua_pushcfunction(L, ::__len<T>);
+				lua_setfield(L, -2, "__len");
+std::cout << "assigning " << mtname << " metatable __len" << std::endl;			
+			} else {
+std::cout << "skipping " << mtname << " metatable __len" << std::endl;			
+			}
+
+			if constexpr (has__call_v<LuaBind<T>>) {
+				lua_pushcfunction(L, ::__call<T>);
+				lua_setfield(L, -2, "__call");
+std::cout << "assigning " << mtname << " metatable __call" << std::endl;			
+			} else {
+std::cout << "skipping " << mtname << " metatable __call" << std::endl;			
 			}
 
 			// ok now let's give the metatable a metatable, so if someone calls it, it'll call the ctor
 			if constexpr (has_mt_ctor_v<LuaBind<T>>) {
 				initMtCtor(L);
 				lua_setmetatable(L, -2);
+std::cout << "assigning " << mtname << " metatable metatable __call ctor" << std::endl;			
+			} else {
+std::cout << "skipping " << mtname << " metatable metatable __call ctor" << std::endl;			
 			}
 		}
 		lua_pop(L, 1);
-	}
-
-	// default behavior.  child template-specializations can override this.
-
-	static int __index(lua_State * L, T & o) {
-		char const * const k = lua_tostring(L, 2);
-		auto const & fields = LuaBind<T>::getFields();
-		auto iter = fields.find(k);
-		if (iter == fields.end()) {
-			lua_pushnil(L);
-			return 1;
-		}
-		iter->second->push(o, L);
-		return 1;
-	}
-
-	static int __newindex(lua_State * L, T & o) {
-		char const * const k = lua_tostring(L, 2);
-		auto const & fields = LuaBind<T>::getFields();
-		auto iter = fields.find(k);
-		if (iter == fields.end()) {
-			luaL_error(L, "sorry, this table cannot accept new members");
-		}
-		iter->second->read(o, L, 3);
-		return 0;
-	}
-
-	static int __tostring(lua_State * L, T & o) {
-		lua_pushfstring(L, "%s: 0x%x", LuaBind<T>::mtname.data(), &o);
-		return 1;
 	}
 };
 
@@ -187,8 +226,11 @@ std::cout << "metatable " << LuaBind<T>::mtname << " type " << lua_type(L, -1) <
 		lua_rawset(L, -3);
 	}
 
-	static void read(lua_State * L, int index, T & result) {
+	static T read(lua_State * L, int index) {
 		luaL_error(L, "this field cannot be overwritten");
+		throw std::runtime_error("this field cannot be overwritten");
+		//return {};	// hmm this needs the default ctor to exist, but I'm throwing,
+					// so it doesn't really need to exist ...
 	}
 };
 
@@ -199,8 +241,8 @@ struct LuaRW<T> {
 	static void push(lua_State * L, T v) {
 		lua_pushnumber(L, v);
 	}
-	static void read(lua_State * L, int index, T & result) {
-		result = lua_tonumber(L, index);
+	static T read(lua_State * L, int index) {
+		return lua_tonumber(L, index);
 	}
 };
 
@@ -211,8 +253,8 @@ struct LuaRW<T> {
 		lua_pushinteger(L, v);
 	}
 
-	static void read(lua_State * L, int index, T & result) {
-		result = lua_tointeger(L, index);
+	static T read(lua_State * L, int index) {
+		return lua_tointeger(L, index);
 	}
 };
 
@@ -243,13 +285,28 @@ struct MemberBaseClass {
 	using type = typename std::remove_pointer_t<decltype(value())>;\
 };
 
-#error todo
+
+
 template<auto field>
 int memberMethodWrapper(lua_State * L) {
-	auto o = lua_getptr(L, 1);
-	LuaRW<decltype(result)>::push(L, o->*field(
-		LuaToCArgs<Args...>(L, 2)...
-	));
+	using MMP = Common::MemberMethodPointer<decltype(field)>;
+	using Args = typename MMP::Args;
+	auto o = lua_getptr<typename MMP::Base>(L, 1);
+	// TODO here, and in Matrix returning ThinVector
+	// and maybe overall ...
+	// ... if we are writing by value then push a dense userdata 
+	// ... if we are writing by pointer or ref then push a light userdata
+	// but mind you, how to determine from LuaRW, unless we only use pass-by-value for values and pass-by-ref for refs ?
+	// or maybe another template arg in LuaRW?
+	LuaRW<typename MMP::Return>::push(L, 
+
+		[&]<auto...j>(std::index_sequence<j...>) -> decltype(auto) {
+			return o->*field(
+				LuaRW<std::tuple_element_t<j, Args>>::read(L, j+1)...
+			);
+		}(std::make_index_sequence<std::tuple_size_v<Args>>{})
+
+	);
 	return 1;
 }
 
@@ -274,7 +331,7 @@ struct Field
 	virtual void read(Base & obj, lua_State * L, int index) const override {
 		if constexpr(std::is_member_object_pointer_v<T>) {
 			using Value = typename Common::MemberPointer<T>::FieldType;
-			LuaRW<Value>::read(L, index, obj.*field);
+			obj.*field = LuaRW<Value>::read(L, index);
 		} else if (std::is_member_function_pointer_v<T>) {
 			luaL_error(L, "this field is read only");
 		}
@@ -312,7 +369,7 @@ struct Field : public FieldBase<
 	}
 
 	virtual void read(Base & obj, lua_State * L, int index) const override {
-		//LuaRW<Return>::read(L, index, obj.*field);
+		//obj.*field = LuaRW<Return>::read(L, index);
 		luaL_error(L, "field is read-only");
 	}
 
@@ -327,7 +384,8 @@ struct Field : public FieldBase<
 // generalized __len, __index, __newindex access
 
 // child needs to provide IndexAccessRead, IndexAccessWrite, IndexLen
-template<typename Child, typename Type, typename Elem>
+// NOTICE ... IF THERE'S AN ERROR IN THE CALLS IN HERE, SFINAE WILL KEEP THE ERROR SILENT AND JUST NOT INHERIT ...
+template<typename CRTPChild, typename Type, typename Elem>
 struct IndexAccessReadWrite {
 	static int __index(lua_State * L, Type & o) {
 		if (lua_type(L, 2) != LUA_TNUMBER) {
@@ -337,11 +395,11 @@ struct IndexAccessReadWrite {
 		int i = lua_tointeger(L, 2);
 		--i;
 		// using 1-based indexing. sue me.
-		if (i < 0 || i >= Child::IndexLen(o)) {
+		if (i < 0 || i >= CRTPChild::IndexLen(o)) {
 			lua_pushnil(L);
 			return 1;
 		}
-		IndexAccessRead(L, o, i);
+		CRTPChild::IndexAccessRead(L, o, i);
 		return 1;
 	}
 
@@ -352,40 +410,98 @@ struct IndexAccessReadWrite {
 		int i = lua_tointeger(L, 2);
 		--i;
 		// using 1-based indexing. sue me.
-		if (i < 0 || i >= Child::IndexLen(o)) {
+		if (i < 0 || i >= CRTPChild::IndexLen(o)) {
 			luaL_error(L, "index %d is out of bounds", i+1);
 		}
-		IndexAccessWrite(L, o, i);
+		CRTPChild::IndexAccessWrite(L, o, i);
 		return 1;
 	}
 
 	static int __len(lua_State * L, Type & o) {
-		lua_pushinteger(L, Child::IndexLen(o));
+		lua_pushinteger(L, CRTPChild::IndexLen(o));
 		return 1;
 	}
-
 };
 
-// Child needs to provide IndexAt, IndexLen
-template<typename Child, typename Type, typename Elem>
-struct IndexAccess : IndexAccessReadWrite<Child, Type, Elem> {
-
+// TODO the static methods aren't getting through to classes inheriting this 
+#if 0
+// CRTPChild needs to provide IndexAt, IndexLen
+template<typename CRTPChild, typename Type, typename Elem>
+struct IndexAccess 
+: public IndexAccessReadWrite<
+	IndexAccess<CRTPChild, Type, Elem>,	// pass the IndexAccess as the new CRTPChild so it can see the IndexAccessRead and IndexAccessWrite here
+	Type, 
+	Elem
+>
+{
 	static void IndexAccessRead(lua_State * L, Type & o, int i) {
-		LuaRW<Elem>::push(L, Child::IndexAt(L, o, i));
+		LuaRW<Elem>::push(L, CRTPChild::IndexAt(L, o, i));
 	}
 
 	static void IndexAccessWrite(lua_State * L, Type & o, int i) {
 		// will error if you try to write a non-prim
-		LuaRW<Elem>::read(L, 3, Child::IndexAt(L, o, i));
+		CRTPChild::IndexAt(L, o, i) = LuaRW<Elem>::read(L, 3);
+	}
+
+	//use CRTPChild's IndexLen
+	static int IndexLen(Type const & o) {
+		return CRTPChild::IndexLen(o);
 	}
 };
+#else
+template<typename CRTPChild, typename Type, typename Elem>
+struct IndexAccess {
+	static int __index(lua_State * L, Type & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			lua_pushnil(L);
+			return 1;
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.
+		if (i < 0 || i >= CRTPChild::IndexLen(o)) {
+			lua_pushnil(L);
+			return 1;
+		}
+		
+		//CRTPChild::IndexAccessRead(L, o, i);
+		LuaRW<Elem>::push(L, CRTPChild::IndexAt(L, o, i));
+		
+		return 1;
+	}
+
+	static int __newindex(lua_State * L, Type & o) {
+		if (lua_type(L, 2) != LUA_TNUMBER) {
+			luaL_error(L, "can only write to index elements");
+		}
+		int i = lua_tointeger(L, 2);
+		--i;
+		// using 1-based indexing. sue me.
+		if (i < 0 || i >= CRTPChild::IndexLen(o)) {
+			luaL_error(L, "index %d is out of bounds", i+1);
+		}
+		
+		//CRTPChild::IndexAccessWrite(L, o, i);
+		CRTPChild::IndexAt(L, o, i) = LuaRW<Elem>::read(L, 3);
+		
+		return 1;
+	}
+
+	static int __len(lua_State * L, Type & o) {
+		lua_pushinteger(L, CRTPChild::IndexLen(o));
+		return 1;
+	}
+};
+#endif
 
 // infos for stl
 
 template<typename Elem>
 struct LuaBind<std::vector<Elem>>
-:	public LuaBindStructBase<std::vector<Elem>>,
-	IndexAccess<
+:	
+	public LuaBindStructBase<std::vector<Elem>>,
+	// inherit from this first to override the default __index and __newindex
+	public IndexAccess<
 		LuaBind<std::vector<Elem>>, 
 		std::vector<Elem>,
 		Elem
@@ -409,6 +525,19 @@ struct LuaBind<std::vector<Elem>>
 		}
 	}
 
+	//hmm I wish there was a default inheritence order static name resolution
+	// but seems I have to explicitly promote which __index and __newindex I want ... per ... child-class ...
+	// override dfeault behavior
+	// TODO I wouldnt' have to do this if I just moved the defaults out of the parent class and into the constexpr test for __index existence
+	//	... but if I did do that, I would have no way to remove __index / __newindex altogether ...
+	using IndexAccess = IndexAccess<
+		LuaBind<std::vector<Elem>>, 
+		std::vector<Elem>,
+		Elem
+	>;
+	using IndexAccess::__index;
+	using IndexAccess::__newindex;
+
 	static Elem & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
 	}
@@ -431,7 +560,7 @@ struct LuaBind<std::vector<Elem>>
 template<typename Real>
 struct LuaBind<NeuralNet::Vector<Real>>
 :	public LuaBindStructBase<NeuralNet::Vector<Real>>,
-	IndexAccess<
+	public IndexAccess<
 		LuaBind<NeuralNet::Vector<Real>>,
 		NeuralNet::Vector<Real>,
 		Real
@@ -464,7 +593,7 @@ struct LuaBind<NeuralNet::Vector<Real>>
 template<typename Real>
 struct LuaBind<NeuralNet::ThinVector<Real>>
 :	public LuaBindStructBase<NeuralNet::ThinVector<Real>>,
-	IndexAccess<
+	public IndexAccess<
 		LuaBind<NeuralNet::ThinVector<Real>>,
 		NeuralNet::ThinVector<Real>,
 		Real
@@ -499,7 +628,7 @@ struct LuaBind<NeuralNet::ThinVector<Real>>
 template<typename Real>
 struct LuaBind<NeuralNet::Matrix<Real>>
 :	public LuaBindStructBase<NeuralNet::Matrix<Real>>,
-	IndexAccessReadWrite<
+	public IndexAccessReadWrite<
 		LuaBind<NeuralNet::Matrix<Real>>,
 		NeuralNet::Matrix<Real>,
 		Real
@@ -617,12 +746,16 @@ struct LuaBind<NeuralNet::ANN<Real>>
 	}
 
 	static auto & getFields() {
+		// TODO autogen from fields[] tuple
+		// maybe even use that tuple instead of this map ... 
+		// ... but ... runtime O(log(n)) map access vs compile-time O(n) tuple iteration ... map still wins
+		// but what about TODO compile-time O(log(n)) recursive tree access of fields
 		static auto field_dt = Field<&Type::dt>();
 		static auto field_layers = Field<&Type::layers>();
 		static auto field_useBatch = Field<&Type::useBatch>();
 		static auto field_batchCounter = Field<&Type::batchCounter>();
 		static auto field_totalBatchCounter = Field<&Type::totalBatchCounter>();
-		static auto field_feedForward = Field<&Type::feedForward>();
+		//static auto field_feedForward = Field<&Type::feedForward>();
 		//static auto field_calcError = Field<&Type::calcError>();
 		//static auto field_backPropagate = Field<&Type::backPropagate>();
 		//static auto field_updateBatch = Field<&Type::updateBatch>();
@@ -633,7 +766,7 @@ struct LuaBind<NeuralNet::ANN<Real>>
 			{"useBatch", &field_useBatch},
 			{"batchCounter", &field_batchCounter},
 			{"totalBatchCounter", &field_totalBatchCounter},
-			{"feedForward", &field_feedForward},
+			//{"feedForward", &field_feedForward},
 			//{"calcError", &field_calcError},
 			//{"backPropagate", &field_backPropagate},
 			//{"updateBatch", &field_updateBatch},

@@ -8,6 +8,7 @@ runtime-sized ANN, runtime-sized matrix
 #include <functional>
 #include <cassert>
 #include <cstring>
+#include <cmath>
 
 namespace NeuralNet {
 
@@ -133,8 +134,10 @@ template<typename T>
 std::ostream & operator<<(std::ostream & o, Matrix<T> const & v) {
 	return o << v.v;
 }
-double tanhDeriv(double x, double y) {
-	return 1. - y * y;
+
+template<typename Real>
+Real tanhDeriv(Real x, Real y) {
+	return 1 - y * y;
 }
 
 template<typename Real>
@@ -159,8 +162,8 @@ public:
 		xErr(sizeIn),
 		netErr(sizeOut),
 		dw(sizeOut, sizeIn+1),
-		activation(tanh),
-		activationDeriv(tanhDeriv)
+		activation(static_cast<Real(*)(Real)>(std::tanh)),
+		activationDeriv(tanhDeriv<Real>)
 	{
 		// welp TODO gonna need a setter for that now
 		x.v[sizeIn] = useBias ? 1 : 0;
@@ -208,7 +211,7 @@ struct ANN {
 			// default weight initialization ...
 			for (int i = 0; i < layer.w.height(); ++i) {
 				for (int j = 0; j < layer.w.width(); ++j) {
-					layer.w[i][j] = random<Real>() * 2. - 1.;
+					layer.w[i][j] = random<Real>() * 2 - 1;
 				}
 			}
 
@@ -230,7 +233,7 @@ struct ANN {
 			// default weight initialization ...
 			for (int i = 0; i < layer.w.height(); ++i) {
 				for (int j = 0; j < layer.w.width(); ++j) {
-					layer.w[i][j] = random<Real>() * 2. - 1.;
+					layer.w[i][j] = random<Real>() * 2 - 1;
 				}
 			}
 
@@ -312,7 +315,7 @@ struct ANN {
 			outputError[i] = delta;
 			s += delta * delta;
 		}
-		return .5 * s;
+		return Real(.5) * s;
 	}
 
 	void backPropagate() { backPropagate(dt); }

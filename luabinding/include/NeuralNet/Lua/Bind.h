@@ -1,5 +1,10 @@
 #pragma once
 
+/*
+TODO all this file should maybe be moved to LuaCxx or to its own lib
+but probably LuaCxx
+*/
+
 #include "NeuralNet/Lua/join.h"
 #include <lua.hpp>
 #include <type_traits>
@@ -18,17 +23,17 @@ namespace Lua {
 // here' all the generic lua-binding stuff
 
 template<typename Type>
-struct LuaBind;
+struct Bind;
 
 // infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
 
 template<>
-struct LuaBind<float> {
+struct Bind<float> {
 	static constexpr std::string_view mtname = "float";
 };
 
 template<>
-struct LuaBind<double> {
+struct Bind<double> {
 	static constexpr std::string_view mtname = "double";
 };
 
@@ -44,38 +49,38 @@ static T * lua_getptr(lua_State * L, int index) {
 	if (!lua_isuserdata(L, -1)) {	// both kinds of userdata plz
 		luaL_checktype(L, -1, LUA_TUSERDATA);	// but i like their error so
 	}
-	// verify metatable is LuaBind<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
+	// verify metatable is Bind<T>::mtname ... however lua_checkudata() does this but only for non-light userdata ...
 	T * o = (T*)lua_touserdata(L, -1);
 	lua_pop(L, 1);
 	if (!o) luaL_error(L, "tried to index a null pointer");
 	return o;
 }
 
-// I could just use the LuaBind static methods themselves, but meh, I cast the object here
+// I could just use the Bind static methods themselves, but meh, I cast the object here
 
 template<typename T>
 static inline int __index(lua_State * L) {
-	return LuaBind<T>::__index(L, *lua_getptr<T>(L, 1));
+	return Bind<T>::__index(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __newindex(lua_State * L) {
-	return LuaBind<T>::__newindex(L, *lua_getptr<T>(L, 1));
+	return Bind<T>::__newindex(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __len(lua_State * L) {
-	return LuaBind<T>::__len(L, *lua_getptr<T>(L, 1));
+	return Bind<T>::__len(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __call(lua_State * L) {
-	return LuaBind<T>::__call(L, *lua_getptr<T>(L, 1));
+	return Bind<T>::__call(L, *lua_getptr<T>(L, 1));
 }
 
 template<typename T>
 static inline int __tostring(lua_State * L) {
-	return LuaBind<T>::__tostring(L, *lua_getptr<T>(L, 1));
+	return Bind<T>::__tostring(L, *lua_getptr<T>(L, 1));
 }
 
 // default behavior.  child template-specializations can override this.
@@ -84,7 +89,7 @@ template<typename T>
 static int default__index(lua_State * L) {
 	auto & o = *lua_getptr<T>(L, 1);
 	char const * const k = lua_tostring(L, 2);
-	auto const & fields = LuaBind<T>::getFields();
+	auto const & fields = Bind<T>::getFields();
 	auto iter = fields.find(k);
 	if (iter == fields.end()) {
 		lua_pushnil(L);
@@ -99,7 +104,7 @@ static int default__newindex(lua_State * L) {
 	assert(lua_gettop(L) == 3);	// t k v
 	auto & o = *lua_getptr<T>(L, 1);
 	char const * const k = lua_tostring(L, 2);
-	auto const & fields = LuaBind<T>::getFields();
+	auto const & fields = Bind<T>::getFields();
 	auto iter = fields.find(k);
 	if (iter == fields.end()) {
 #if 0	// option 1: no new fields
@@ -117,7 +122,7 @@ static int default__newindex(lua_State * L) {
 template<typename T>
 static int default__tostring(lua_State * L) {
 	auto & o = *lua_getptr<T>(L, 1);
-	lua_pushfstring(L, "%s: 0x%x", LuaBind<T>::mtname.data(), &o);
+	lua_pushfstring(L, "%s: 0x%x", Bind<T>::mtname.data(), &o);
 	return 1;
 }
 
@@ -130,15 +135,15 @@ template<typename T> constexpr bool has__tostring_v = requires(T const & t) { t.
 template<typename T> constexpr bool has_mt_ctor_v = requires(T const & t) { t.mt_ctor; };
 
 template<typename T>
-struct LuaBindStructBase {
+struct BindStructBase {
 
 	// add the class constructor as the call operator of the metatable
 	static void initMtCtor(lua_State * L) {
 		static constexpr std::string_view suffix = " metatable";
-		static constexpr std::string_view mtname = join_v<LuaBind<T>::mtname, suffix>;
+		static constexpr std::string_view mtname = join_v<Bind<T>::mtname, suffix>;
 		if (!luaL_newmetatable(L, mtname.data())) return;
 
-		lua_pushcfunction(L, LuaBind<T>::mt_ctor);
+		lua_pushcfunction(L, Bind<T>::mt_ctor);
 		lua_setfield(L, -2, "__call");
 	}
 
@@ -146,9 +151,9 @@ struct LuaBindStructBase {
 	initialize the metatable associated with this type
 	*/
 	static void mtinit(lua_State * L) {
-		auto const & mtname = LuaBind<T>::mtname;
+		auto const & mtname = Bind<T>::mtname;
 
-		for (auto & pair : LuaBind<T>::getFields()) {
+		for (auto & pair : Bind<T>::getFields()) {
 			pair.second->mtinit(L);
 		}
 
@@ -166,7 +171,7 @@ struct LuaBindStructBase {
 			but the downside is - with the if constexpr check here - that there will always be an __index but maybe that wasla ways the case ...
 			*/
 
-			if constexpr (has__tostring_v<LuaBind<T>>) {
+			if constexpr (has__tostring_v<Bind<T>>) {
 				lua_pushcfunction(L, ::NeuralNet::Lua::__tostring<T>);
 				lua_setfield(L, -2, "__tostring");
 //std::cout << "assigning __tostring" << std::endl;
@@ -176,7 +181,7 @@ struct LuaBindStructBase {
 //std::cout << "using default __tostring" << std::endl;
 			}
 
-			if constexpr (has__index_v<LuaBind<T>>) {
+			if constexpr (has__index_v<Bind<T>>) {
 				lua_pushcfunction(L, ::NeuralNet::Lua::__index<T>);
 				lua_setfield(L, -2, "__index");
 //std::cout << "assigning __index" << std::endl;
@@ -186,7 +191,7 @@ struct LuaBindStructBase {
 //std::cout << "using default __index" << std::endl;
 			}
 
-			if constexpr (has__newindex_v<LuaBind<T>>) {
+			if constexpr (has__newindex_v<Bind<T>>) {
 				lua_pushcfunction(L, ::NeuralNet::Lua::__newindex<T>);
 				lua_setfield(L, -2, "__newindex");
 //std::cout << "assigning __newindex" << std::endl;
@@ -198,20 +203,20 @@ struct LuaBindStructBase {
 
 			// the rest of these are optional to provide
 
-			if constexpr (has__len_v<LuaBind<T>>) {
+			if constexpr (has__len_v<Bind<T>>) {
 				lua_pushcfunction(L, ::NeuralNet::Lua::__len<T>);
 				lua_setfield(L, -2, "__len");
 //std::cout << "assigning __len" << std::endl;
 			}
 
-			if constexpr (has__call_v<LuaBind<T>>) {
+			if constexpr (has__call_v<Bind<T>>) {
 				lua_pushcfunction(L, ::NeuralNet::Lua::__call<T>);
 				lua_setfield(L, -2, "__call");
 //std::cout << "assigning __call" << std::endl;
 			}
 
 			// ok now let's give the metatable a metatable, so if someone calls it, it'll call the ctor
-			if constexpr (has_mt_ctor_v<LuaBind<T>>) {
+			if constexpr (has_mt_ctor_v<Bind<T>>) {
 				initMtCtor(L);
 				lua_setmetatable(L, -2);
 //std::cout << "assigning metatable __call ctor" << std::endl;
@@ -231,16 +236,16 @@ struct LuaRW {
 		// so it'll have to be a new lua table that points back to this
 		lua_newtable(L);
 #if 1	// if the metatable isn't there then it won't be set
-		luaL_setmetatable(L, LuaBind<T>::mtname.data());
+		luaL_setmetatable(L, Bind<T>::mtname.data());
 #endif
 #if 0 	//isn't this supposed to do the same as luaL_setmetatable ?
-		luaL_getmetatable(L, LuaBind<T>::mtname.data());
-std::cout << "metatable " << LuaBind<T>::mtname << " type " << lua_type(L, -1) << std::endl;
+		luaL_getmetatable(L, Bind<T>::mtname.data());
+std::cout << "metatable " << Bind<T>::mtname << " type " << lua_type(L, -1) << std::endl;
 		lua_setmetatable(L, -2);
 #endif
 #if 0 // this say ssomething is there, but it always returns nil
 		lua_getmetatable(L, -1);
-std::cout << "metatable " << LuaBind<T>::mtname << " type " << lua_type(L, -1) << std::endl;
+std::cout << "metatable " << Bind<T>::mtname << " type " << lua_type(L, -1) << std::endl;
 		lua_pop(L, 1);
 #endif
 		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
@@ -372,12 +377,12 @@ struct Field
 		if constexpr(std::is_member_object_pointer_v<T>) {
 			using Value = typename Common::MemberPointer<T>::FieldType;
 			if constexpr (std::is_class_v<Value>) {
-				LuaBind<Value>::mtinit(L);
+				Bind<Value>::mtinit(L);
 			}
 		} else if (std::is_member_function_pointer_v<T>) {
 			using Return = typename Common::MemberMethodPointer<T>::Return;
 			if constexpr (std::is_class_v<Return>) {
-				LuaBind<Return>::mtinit(L);
+				Bind<Return>::mtinit(L);
 			}
 			// need to add arg types too or nah?  nah... returns are returned, so they could be a first creation of that type. not args.
 		}
@@ -406,7 +411,7 @@ struct Field : public FieldBase<
 
 	virtual void mtinit(lua_State * L) const override {
 		if constexpr (std::is_class_v<Return>) {
-			LuaBind<Return>::mtinit(L);
+			Bind<Return>::mtinit(L);
 		}
 	}
 };
@@ -480,20 +485,20 @@ struct IndexAccess
 // infos for stl
 
 template<typename Elem>
-struct LuaBind<std::vector<Elem>>
-:	public LuaBindStructBase<std::vector<Elem>>,
+struct Bind<std::vector<Elem>>
+:	public BindStructBase<std::vector<Elem>>,
 	public IndexAccess<
-		LuaBind<std::vector<Elem>>,
+		Bind<std::vector<Elem>>,
 		std::vector<Elem>,
 		Elem
 	>
 {
-	using Super = LuaBindStructBase<std::vector<Elem>>;
+	using Super = BindStructBase<std::vector<Elem>>;
 	using Type = std::vector<Elem>;
 
 	static constexpr std::string_view strpre = "std::vector<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<LuaBind<Elem>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = join_v<strpre, join_v<Bind<Elem>::mtname, strsuf>>;
 
 	// vector needs Elem's metatable initialized
 	static void mtinit(lua_State * L) {
@@ -502,7 +507,7 @@ struct LuaBind<std::vector<Elem>>
 		//init all subtypes
 		//this test is same as in Field::mtinit
 		if constexpr (std::is_class_v<Elem>) {
-			LuaBind<Elem>::mtinit(L);
+			Bind<Elem>::mtinit(L);
 		}
 	}
 

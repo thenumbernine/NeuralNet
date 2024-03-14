@@ -3,15 +3,19 @@ It's designed to have an API that matches the `neuralnet` lua project.
 That means 1-based indexes.  yes.
 
 - `ANN = require 'NeuralNetLua'` = get the ctor.
-- `ANN` = function (table? class?) that constructs an ANN object.
+- `ann = ANN(layer1, ..., layerN)` = function (table? class?) that constructs an ANN object.
 - `ann.dt`
-- `ann.x[]`
-- `ann.xErr[]`
-- `ann.w[]`
-- `ann.net[]`
-- `ann.netErr[]`
-- `ann.useBias[]`
-- `ann.dw[]`
+- `ann.layers[]`
+- `ann.output`
+- `ann.desired`
+- `ann.outputError`
+- `layer.x[]`
+- `layer.xErr[]`
+- `layer.w[]`
+- `layer.net[]`
+- `layer.netErr[]`
+- `layer.useBias`
+- `layer.dw[]`
 - `ann.useBatch`
 - `ann.batchCounter`
 - `ann.totalBatchCounter`
@@ -20,3 +24,5 @@ That means 1-based indexes.  yes.
 - `ann:backPropagate([dt])`
 - `ann:updateBatch()`
 - `ann:clearBatch()`
+
+Driven by some Lua C++ automatic binding / member object and method wrapper generation that is pretty concise (500 loc or so).

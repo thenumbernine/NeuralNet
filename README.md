@@ -10,3 +10,5 @@ Bias value is baked into the vector memory (debug asserts make sure it's not ove
 Vectors are 4-float aligned for future/smart-compiler SIMD optimizations.
 
 Everything is in templates.
+
+There's also some auto C++ Lua binding code that is in the `luabinding` folder.

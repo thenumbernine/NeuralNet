@@ -29,10 +29,11 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::Vector<Real>>
 	}
 
 	static auto & getFields() {
+		static auto field_normL1 = Field<&Type::normL1>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
 			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
-			//{"normL1", new Field<&NeuralNet::Vector<Real>>()},
+			{"normL1", &field_normL1},
 		};
 		return fields;
 	}
@@ -63,10 +64,11 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ThinVector<Real>>
 	}
 
 	static auto & getFields() {
+		static auto field_normL1 = Field<&Type::normL1>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
 			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
-			//{"normL1", new Field<&NeuralNet::Vector<Real>>()},
+			{"normL1", &field_normL1},
 		};
 		return fields;
 	}
@@ -143,7 +145,7 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::Layer<Real>>
 		static auto field_dw = Field<&Type::dw>();
 		//static auto field_activation = Field<&Type::activation>();
 		//static auto field_activationDeriv = Field<&Type::activationDeriv>();
-		//static auto field_getBias = Field<&Type::getBias>();
+		static auto field_getBias = Field<&Type::getBias>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			{"x", &field_x},
 			{"net", &field_net},
@@ -155,7 +157,7 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::Layer<Real>>
 			//{"activation", &field_activation},
 			//{"activationDeriv", &field_activationDeriv},
 			// needs method wrapper
-			//{"getBias", &field_getBias},
+			{"getBias", &field_getBias},
 		};
 		return fields;
 	}
@@ -179,6 +181,8 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 		// then I could move mt_ctor to the LuaBindStructBase parent
 		// 1st arg is the metatable ... or its another ANN
 		// stack: 1st arg should be the mt, since its call operator is the ann ctor
+		
+		// TODO ANN has an initializer_list ctor ... woudl be nice to jsut fwd args like I'm doing for the call wrapper ...
 		int const nargs = lua_gettop(L);
 		std::vector<int> layerSizes;
 		for (int i = 2; i <= nargs; ++i) {
@@ -204,10 +208,15 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 		static auto field_batchCounter = Field<&Type::batchCounter>();
 		static auto field_totalBatchCounter = Field<&Type::totalBatchCounter>();
 		static auto field_feedForward = Field<&Type::feedForward>();
-		//static auto field_calcError = Field<&Type::calcError>();
-		//static auto field_backPropagate = Field<&Type::backPropagate>();
-		//static auto field_updateBatch = Field<&Type::updateBatch>();
-		//static auto field_clearBatch = Field<&Type::clearBatch>();
+		static auto field_calcError = Field<&Type::calcError>();
+		static auto field_backPropagate = Field<
+			static_cast<void (Type::*)()>(&Type::backPropagate)
+		>();
+		static auto field_backPropagate_dt = Field<
+			static_cast<void (Type::*)(Real)>(&Type::backPropagate)
+		>();	
+		static auto field_updateBatch = Field<&Type::updateBatch>();
+		static auto field_clearBatch = Field<&Type::clearBatch>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			{"dt", &field_dt},
 			{"layers", &field_layers},
@@ -215,10 +224,15 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 			{"batchCounter", &field_batchCounter},
 			{"totalBatchCounter", &field_totalBatchCounter},
 			{"feedForward", &field_feedForward},
-			//{"calcError", &field_calcError},
-			//{"backPropagate", &field_backPropagate},
-			//{"updateBatch", &field_updateBatch},
-			//{"clearBatch", &field_clearBatch},
+			{"calcError", &field_calcError},
+			
+			{"backPropagate", &field_backPropagate},
+			
+			// TODO would be nice for the binding to also handle overloads ... maybe some day
+			{"backPropagate_dt", &field_backPropagate_dt},
+			
+			{"updateBatch", &field_updateBatch},
+			{"clearBatch", &field_clearBatch},
 		};
 		return fields;
 	}
@@ -226,7 +240,10 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 
 extern "C" {
 int luaopen_NeuralNetLua(lua_State * L) {
+	
+	// instanciate as many template types as you want here
 	NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtinit(L);
+	
 	luaL_getmetatable(L, NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtname.data());
 	return 1;
 }

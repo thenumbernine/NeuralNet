@@ -61,11 +61,24 @@ struct ThinVector {
 	Real * v = {};
 	int size = {};
 	int storageSize = {};
+	
 	ThinVector(Real * v_, int size_, int storageSize_)
 	:	v(v_),
 		size(size_),
 		storageSize(storageSize_)
 	{}
+
+	Real normL1() const {
+		auto vi = v;
+		auto vend = vi + size;
+		Real sum = fabs(*vi);
+		++vi;
+		for (; vi < vend; ++vi) {
+			sum += fabs(*vi);
+		}
+		return sum;
+	}
+	
 	decltype(auto) operator[](int i) { return v[i]; }
 	decltype(auto) operator[](int i) const { return v[i]; }
 };

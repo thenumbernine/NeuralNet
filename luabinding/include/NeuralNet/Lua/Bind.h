@@ -92,10 +92,18 @@ template<typename T>
 static int default__newindex(lua_State * L) {
 	auto & o = *lua_getptr<T>(L, 1);
 	char const * const k = lua_tostring(L, 2);
+	assert(lua_gettop(L) == 3);	// t k v
 	auto const & fields = LuaBind<T>::getFields();
 	auto iter = fields.find(k);
 	if (iter == fields.end()) {
+#if 0	// option 1: no new fields
 		luaL_error(L, "sorry, this table cannot accept new members");
+#endif
+#if 1	// option 2: write the Lua value into the Lua table
+		lua_pushvalue(L, 2);
+		lua_rawset(L, 1);
+		return 0;
+#endif
 	}
 	iter->second->read(o, L, 3);
 	return 0;

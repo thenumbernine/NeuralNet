@@ -250,18 +250,34 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 	}
 };
 
+
+
+#include <tuple>
+//#include <stdfloat>
+
+template<typename T>
+constexpr int buildType(lua_State * L) {
+	using LuaBind = NeuralNet::Lua::LuaBind<T>;
+	LuaBind::mtinit(L);
+	auto name = LuaBind::mtname;
+	luaL_getmetatable(L, name.data());
+	lua_setfield(L, -2, name.data());
+	return 0;
+}
+
 extern "C" {
 int luaopen_NeuralNetLua(lua_State * L) {
-
 	// instanciate as many template types as you want here
-	NeuralNet::Lua::LuaBind<NeuralNet::ANN<float>>::mtinit(L);
-	NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtinit(L);
-
+	using types = std::tuple<
+		NeuralNet::ANN<float>,
+		NeuralNet::ANN<double>
+	>;
 	lua_newtable(L);
-	luaL_getmetatable(L, NeuralNet::Lua::LuaBind<NeuralNet::ANN<float>>::mtname.data());
-	lua_setfield(L, -2, NeuralNet::Lua::LuaBind<NeuralNet::ANN<float>>::mtname.data());
-	luaL_getmetatable(L, NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtname.data());
-	lua_setfield(L, -2, NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtname.data());
+	[&]<auto...j>(std::index_sequence<j...>) constexpr {
+		(buildType<
+			std::tuple_element_t<j, types>
+		>(L), ...);
+	}(std::make_index_sequence<std::tuple_size_v<types>>{});
 	return 1;
 }
 }

@@ -156,11 +156,11 @@ struct LuaBindStructBase {
 			if constexpr (has__tostring_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::NeuralNet::Lua::__tostring<T>);
 				lua_setfield(L, -2, "__tostring");
-//std::cout << "assigning __tostring" << std::endl;			
+//std::cout << "assigning __tostring" << std::endl;
 			} else {
 				lua_pushcfunction(L, ::NeuralNet::Lua::default__tostring<T>);
 				lua_setfield(L, -2, "__tostring");
-//std::cout << "using default __tostring" << std::endl;			
+//std::cout << "using default __tostring" << std::endl;
 			}
 
 			if constexpr (has__index_v<LuaBind<T>>) {
@@ -188,20 +188,20 @@ struct LuaBindStructBase {
 			if constexpr (has__len_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::NeuralNet::Lua::__len<T>);
 				lua_setfield(L, -2, "__len");
-//std::cout << "assigning __len" << std::endl;			
+//std::cout << "assigning __len" << std::endl;
 			}
 
 			if constexpr (has__call_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::NeuralNet::Lua::__call<T>);
 				lua_setfield(L, -2, "__call");
-//std::cout << "assigning __call" << std::endl;			
+//std::cout << "assigning __call" << std::endl;
 			}
 
 			// ok now let's give the metatable a metatable, so if someone calls it, it'll call the ctor
 			if constexpr (has_mt_ctor_v<LuaBind<T>>) {
 				initMtCtor(L);
 				lua_setmetatable(L, -2);
-//std::cout << "assigning metatable __call ctor" << std::endl;			
+//std::cout << "assigning metatable __call ctor" << std::endl;
 			}
 		}
 		lua_pop(L, 1);
@@ -304,11 +304,11 @@ int memberMethodWrapper(lua_State * L) {
 	auto & o = *lua_getptr<typename MMP::Class>(L, 1);
 	// TODO here, and in Matrix returning ThinVector
 	// and maybe overall ...
-	// ... if we are writing by value then push a dense userdata 
+	// ... if we are writing by value then push a dense userdata
 	// ... if we are writing by pointer or ref then push a light userdata
 	// but mind you, how to determine from LuaRW, unless we only use pass-by-value for values and pass-by-ref for refs ?
 	// or maybe another template arg in LuaRW?
-	
+
 	if constexpr (std::is_same_v<Return, void>) {
 		[&]<auto...j>(std::index_sequence<j...>) -> decltype(auto) {
 			(o.*field)(
@@ -317,7 +317,7 @@ int memberMethodWrapper(lua_State * L) {
 		}(std::make_index_sequence<std::tuple_size_v<Args>>{});
 		return 0;
 	} else {
-		LuaRW<Return>::push(L, 
+		LuaRW<Return>::push(L,
 			[&]<auto...j>(std::index_sequence<j...>) -> decltype(auto) {
 				return (o.*field)(
 					LuaRW<std::tuple_element_t<j, Args>>::read(L, j+1)...
@@ -330,7 +330,7 @@ int memberMethodWrapper(lua_State * L) {
 
 //generic field is an object, exposed as lightuserdata wrapped in a table
 template<auto field>
-struct Field 
+struct Field
 : public FieldBase<typename MemberBaseClass<decltype(field)>::type>
 {
 	using T = decltype(field);
@@ -366,7 +366,7 @@ struct Field
 			if constexpr (std::is_class_v<Return>) {
 				LuaBind<Return>::mtinit(L);
 			}
-			// need to add arg types too or nah?  nah... returns are returned, so they could be a first creation of that type. not args. 
+			// need to add arg types too or nah?  nah... returns are returned, so they could be a first creation of that type. not args.
 		}
 	}
 };
@@ -442,10 +442,10 @@ struct IndexAccessReadWrite {
 
 // CRTPChild needs to provide IndexAt, IndexLen
 template<typename CRTPChild, typename Type, typename Elem>
-struct IndexAccess 
+struct IndexAccess
 : public IndexAccessReadWrite<
 	IndexAccess<CRTPChild, Type, Elem>,	// pass the IndexAccess as the new CRTPChild so it can see the IndexAccessRead and IndexAccessWrite here
-	Type, 
+	Type,
 	Elem
 >
 {
@@ -470,7 +470,7 @@ template<typename Elem>
 struct LuaBind<std::vector<Elem>>
 :	public LuaBindStructBase<std::vector<Elem>>,
 	public IndexAccess<
-		LuaBind<std::vector<Elem>>, 
+		LuaBind<std::vector<Elem>>,
 		std::vector<Elem>,
 		Elem
 	>

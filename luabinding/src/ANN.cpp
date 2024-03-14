@@ -181,7 +181,7 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 		// then I could move mt_ctor to the LuaBindStructBase parent
 		// 1st arg is the metatable ... or its another ANN
 		// stack: 1st arg should be the mt, since its call operator is the ann ctor
-		
+
 		// TODO ANN has an initializer_list ctor ... woudl be nice to jsut fwd args like I'm doing for the call wrapper ...
 		int const nargs = lua_gettop(L);
 		std::vector<int> layerSizes;
@@ -199,14 +199,20 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 
 	static auto & getFields() {
 		// TODO autogen from fields[] tuple
-		// maybe even use that tuple instead of this map ... 
+		// maybe even use that tuple instead of this map ...
 		// ... but ... runtime O(log(n)) map access vs compile-time O(n) tuple iteration ... map still wins
 		// but what about TODO compile-time O(log(n)) recursive tree access of fields
-		static auto field_dt = Field<&Type::dt>();
 		static auto field_layers = Field<&Type::layers>();
+		static auto field_output = Field<&Type::output>();
+		static auto field_outputError = Field<&Type::outputError>();
+		static auto field_desired = Field<&Type::desired>();
+		static auto field_dt = Field<&Type::dt>();
 		static auto field_useBatch = Field<&Type::useBatch>();
 		static auto field_batchCounter = Field<&Type::batchCounter>();
 		static auto field_totalBatchCounter = Field<&Type::totalBatchCounter>();
+		// TODO member functions that return refs
+		//static auto field_input = Field<&Type::input>();
+		//static auto field_inputError = Field<&Type::inputError>();
 		static auto field_feedForward = Field<&Type::feedForward>();
 		static auto field_calcError = Field<&Type::calcError>();
 		static auto field_backPropagate = Field<
@@ -214,23 +220,29 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 		>();
 		static auto field_backPropagate_dt = Field<
 			static_cast<void (Type::*)(Real)>(&Type::backPropagate)
-		>();	
+		>();
 		static auto field_updateBatch = Field<&Type::updateBatch>();
 		static auto field_clearBatch = Field<&Type::clearBatch>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
-			{"dt", &field_dt},
 			{"layers", &field_layers},
+			{"output", &field_output},
+			{"outputError", &field_outputError},
+			{"desired", &field_desired},
+			{"dt", &field_dt},
 			{"useBatch", &field_useBatch},
 			{"batchCounter", &field_batchCounter},
 			{"totalBatchCounter", &field_totalBatchCounter},
+
+			//{"input", &field_input},
+			//{"inputError", &field_inputError},
 			{"feedForward", &field_feedForward},
 			{"calcError", &field_calcError},
-			
+
 			{"backPropagate", &field_backPropagate},
-			
+
 			// TODO would be nice for the binding to also handle overloads ... maybe some day
 			{"backPropagate_dt", &field_backPropagate_dt},
-			
+
 			{"updateBatch", &field_updateBatch},
 			{"clearBatch", &field_clearBatch},
 		};
@@ -240,10 +252,10 @@ struct NeuralNet::Lua::LuaBind<NeuralNet::ANN<Real>>
 
 extern "C" {
 int luaopen_NeuralNetLua(lua_State * L) {
-	
+
 	// instanciate as many template types as you want here
 	NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtinit(L);
-	
+
 	luaL_getmetatable(L, NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtname.data());
 	return 1;
 }

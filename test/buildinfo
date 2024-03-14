@@ -1,10 +1,13 @@
 distName='test'
 distType='app'
-compileFlags = compileFlags .. ' -O3'
---compileFlags = compileFlags .. ' -Ofast'
---compileFlags = compileFlags .. ' -Ofast -march=native'
+--compileFlags = compileFlags .. ' -O3'
+compileFlags = compileFlags .. ' -O3 -march=native'
 depends:append{
 	'..',
 	'../../Common',
 	'../../Tensor',
 }
+--[[
+compiler = 'clang++'
+linker = 'clang++'
+--]]

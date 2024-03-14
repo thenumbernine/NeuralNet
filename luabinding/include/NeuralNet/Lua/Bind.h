@@ -20,6 +20,19 @@ namespace Lua {
 template<typename Type>
 struct LuaBind;
 
+// infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
+
+template<>
+struct LuaBind<float> {
+	static constexpr std::string_view mtname = "float";
+};
+
+template<>
+struct LuaBind<double> {
+	static constexpr std::string_view mtname = "double";
+};
+
+
 // needs to be a macro and not a C++ typed expression for lua's pushliteral to work
 #define LUACXX_BIND_PTRFIELD "ptr"
 
@@ -64,13 +77,6 @@ template<typename T>
 static inline int __tostring(lua_State * L) {
 	return LuaBind<T>::__tostring(L, *lua_getptr<T>(L, 1));
 }
-
-// infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
-
-template<>
-struct LuaBind<double> {
-	static constexpr std::string_view mtname = "double";
-};
 
 // default behavior.  child template-specializations can override this.
 

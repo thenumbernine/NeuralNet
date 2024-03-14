@@ -254,9 +254,14 @@ extern "C" {
 int luaopen_NeuralNetLua(lua_State * L) {
 
 	// instanciate as many template types as you want here
+	NeuralNet::Lua::LuaBind<NeuralNet::ANN<float>>::mtinit(L);
 	NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtinit(L);
 
+	lua_newtable(L);
+	luaL_getmetatable(L, NeuralNet::Lua::LuaBind<NeuralNet::ANN<float>>::mtname.data());
+	lua_setfield(L, -2, NeuralNet::Lua::LuaBind<NeuralNet::ANN<float>>::mtname.data());
 	luaL_getmetatable(L, NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtname.data());
+	lua_setfield(L, -2, NeuralNet::Lua::LuaBind<NeuralNet::ANN<double>>::mtname.data());
 	return 1;
 }
 }

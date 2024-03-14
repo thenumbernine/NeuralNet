@@ -55,10 +55,18 @@ static inline int __tostring(lua_State * L) {
 	return LuaBind<T>::__tostring(L, *lua_getptr<T>(L, 1));
 }
 
+// infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
+
+template<>
+struct LuaBind<double> {
+	static constexpr std::string_view mtname = "double";
+};
 
 // default behavior.  child template-specializations can override this.
 
-static int default__index(lua_State * L, T & o) {
+template<typename T>
+static int default__index(lua_State * L) {
+	auto & o = *lua_getptr<T>(L, 1);
 	char const * const k = lua_tostring(L, 2);
 	auto const & fields = LuaBind<T>::getFields();
 	auto iter = fields.find(k);
@@ -70,7 +78,9 @@ static int default__index(lua_State * L, T & o) {
 	return 1;
 }
 
-static int default__newindex(lua_State * L, T & o) {
+template<typename T>
+static int default__newindex(lua_State * L) {
+	auto & o = *lua_getptr<T>(L, 1);
 	char const * const k = lua_tostring(L, 2);
 	auto const & fields = LuaBind<T>::getFields();
 	auto iter = fields.find(k);
@@ -81,19 +91,12 @@ static int default__newindex(lua_State * L, T & o) {
 	return 0;
 }
 
-static int default__tostring(lua_State * L, T & o) {
+template<typename T>
+static int default__tostring(lua_State * L) {
+	auto & o = *lua_getptr<T>(L, 1);
 	lua_pushfstring(L, "%s: 0x%x", LuaBind<T>::mtname.data(), &o);
 	return 1;
 }
-
-
-
-// infos for prims.  doesn't have lua exposure, only mtname for mtname joining at compile time
-
-template<>
-struct LuaBind<double> {
-	static constexpr std::string_view mtname = "double";
-};
 
 // base infos for all structs:
 template<typename T> constexpr bool has__index_v = requires(T const & t) { t.__index; };
@@ -131,6 +134,8 @@ struct LuaBindStructBase {
 			lua_pushstring(L, mtname.data());
 			lua_setfield(L, -2, "__name");
 
+std::cout << "building " << mtname << " metatable" << std::endl;
+
 			/*
 			for __index and __newindex I'm providing default behavior.
 			i used to provide it via static parent class method, but that emant overriding children ha to always 'using' to specify their own impl ver the aprent
@@ -138,34 +143,34 @@ struct LuaBindStructBase {
 			but the downside is - with the if constexpr check here - that there will always be an __index but maybe that wasla ways the case ...
 			*/
 
+			if constexpr (has__tostring_v<LuaBind<T>>) {
+				lua_pushcfunction(L, ::__tostring<T>);
+				lua_setfield(L, -2, "__tostring");
+std::cout << "assigning __tostring" << std::endl;			
+			} else {
+				lua_pushcfunction(L, ::default__tostring<T>);
+				lua_setfield(L, -2, "__tostring");
+std::cout << "using default __tostring" << std::endl;			
+			}
+
 			if constexpr (has__index_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__index<T>);
 				lua_setfield(L, -2, "__index");
-std::cout << "assigning " << mtname << " metatable __index" << std::endl;			
+std::cout << "assigning __index" << std::endl;
 			} else {
 				lua_pushcfunction(L, ::default__index<T>);
 				lua_setfield(L, -2, "__index");
-std::cout << "using default " << mtname << " metatable __index" << std::endl;			
+std::cout << "using default __index" << std::endl;
 			}
 
 			if constexpr (has__newindex_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__newindex<T>);
 				lua_setfield(L, -2, "__newindex");
-std::cout << "assigning " << mtname << " metatable __newindex" << std::endl;			
+std::cout << "assigning __newindex" << std::endl;
 			} else {
 				lua_pushcfunction(L, ::default__newindex<T>);
 				lua_setfield(L, -2, "__newindex");
-std::cout << "using default " << mtname << " metatable __newindex" << std::endl;			
-			}
-
-			if constexpr (has__tostring_v<LuaBind<T>>) {
-				lua_pushcfunction(L, ::__tostring<T>);
-				lua_setfield(L, -2, "__tostring");
-std::cout << "assigning " << mtname << " metatable __tostring" << std::endl;			
-			} else {
-				lua_pushcfunction(L, ::default__tostring<T>);
-				lua_setfield(L, -2, "__tostring");
-std::cout << "using default " << mtname << " metatable __tostring" << std::endl;			
+std::cout << "using default __newindex" << std::endl;
 			}
 
 			// the rest of these are optional to provide
@@ -173,26 +178,20 @@ std::cout << "using default " << mtname << " metatable __tostring" << std::endl;
 			if constexpr (has__len_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__len<T>);
 				lua_setfield(L, -2, "__len");
-std::cout << "assigning " << mtname << " metatable __len" << std::endl;			
-			} else {
-std::cout << "skipping " << mtname << " metatable __len" << std::endl;			
+std::cout << "assigning __len" << std::endl;			
 			}
 
 			if constexpr (has__call_v<LuaBind<T>>) {
 				lua_pushcfunction(L, ::__call<T>);
 				lua_setfield(L, -2, "__call");
-std::cout << "assigning " << mtname << " metatable __call" << std::endl;			
-			} else {
-std::cout << "skipping " << mtname << " metatable __call" << std::endl;			
+std::cout << "assigning __call" << std::endl;			
 			}
 
 			// ok now let's give the metatable a metatable, so if someone calls it, it'll call the ctor
 			if constexpr (has_mt_ctor_v<LuaBind<T>>) {
 				initMtCtor(L);
 				lua_setmetatable(L, -2);
-std::cout << "assigning " << mtname << " metatable metatable __call ctor" << std::endl;			
-			} else {
-std::cout << "skipping " << mtname << " metatable metatable __call ctor" << std::endl;			
+std::cout << "assigning metatable __call ctor" << std::endl;			
 			}
 		}
 		lua_pop(L, 1);
@@ -384,7 +383,6 @@ struct Field : public FieldBase<
 // generalized __len, __index, __newindex access
 
 // child needs to provide IndexAccessRead, IndexAccessWrite, IndexLen
-// NOTICE ... IF THERE'S AN ERROR IN THE CALLS IN HERE, SFINAE WILL KEEP THE ERROR SILENT AND JUST NOT INHERIT ...
 template<typename CRTPChild, typename Type, typename Elem>
 struct IndexAccessReadWrite {
 	static int __index(lua_State * L, Type & o) {
@@ -423,8 +421,6 @@ struct IndexAccessReadWrite {
 	}
 };
 
-// TODO the static methods aren't getting through to classes inheriting this 
-#if 0
 // CRTPChild needs to provide IndexAt, IndexLen
 template<typename CRTPChild, typename Type, typename Elem>
 struct IndexAccess 
@@ -448,59 +444,12 @@ struct IndexAccess
 		return CRTPChild::IndexLen(o);
 	}
 };
-#else
-template<typename CRTPChild, typename Type, typename Elem>
-struct IndexAccess {
-	static int __index(lua_State * L, Type & o) {
-		if (lua_type(L, 2) != LUA_TNUMBER) {
-			lua_pushnil(L);
-			return 1;
-		}
-		int i = lua_tointeger(L, 2);
-		--i;
-		// using 1-based indexing. sue me.
-		if (i < 0 || i >= CRTPChild::IndexLen(o)) {
-			lua_pushnil(L);
-			return 1;
-		}
-		
-		//CRTPChild::IndexAccessRead(L, o, i);
-		LuaRW<Elem>::push(L, CRTPChild::IndexAt(L, o, i));
-		
-		return 1;
-	}
-
-	static int __newindex(lua_State * L, Type & o) {
-		if (lua_type(L, 2) != LUA_TNUMBER) {
-			luaL_error(L, "can only write to index elements");
-		}
-		int i = lua_tointeger(L, 2);
-		--i;
-		// using 1-based indexing. sue me.
-		if (i < 0 || i >= CRTPChild::IndexLen(o)) {
-			luaL_error(L, "index %d is out of bounds", i+1);
-		}
-		
-		//CRTPChild::IndexAccessWrite(L, o, i);
-		CRTPChild::IndexAt(L, o, i) = LuaRW<Elem>::read(L, 3);
-		
-		return 1;
-	}
-
-	static int __len(lua_State * L, Type & o) {
-		lua_pushinteger(L, CRTPChild::IndexLen(o));
-		return 1;
-	}
-};
-#endif
 
 // infos for stl
 
 template<typename Elem>
 struct LuaBind<std::vector<Elem>>
-:	
-	public LuaBindStructBase<std::vector<Elem>>,
-	// inherit from this first to override the default __index and __newindex
+:	public LuaBindStructBase<std::vector<Elem>>,
 	public IndexAccess<
 		LuaBind<std::vector<Elem>>, 
 		std::vector<Elem>,
@@ -524,19 +473,6 @@ struct LuaBind<std::vector<Elem>>
 			LuaBind<Elem>::mtinit(L);
 		}
 	}
-
-	//hmm I wish there was a default inheritence order static name resolution
-	// but seems I have to explicitly promote which __index and __newindex I want ... per ... child-class ...
-	// override dfeault behavior
-	// TODO I wouldnt' have to do this if I just moved the defaults out of the parent class and into the constexpr test for __index existence
-	//	... but if I did do that, I would have no way to remove __index / __newindex altogether ...
-	using IndexAccess = IndexAccess<
-		LuaBind<std::vector<Elem>>, 
-		std::vector<Elem>,
-		Elem
-	>;
-	using IndexAccess::__index;
-	using IndexAccess::__newindex;
 
 	static Elem & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];

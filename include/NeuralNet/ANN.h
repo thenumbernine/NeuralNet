@@ -23,6 +23,7 @@ struct Vector {
 
 	// size = layer size
 	// so 'size+1' padding is always present and assigned to the bias
+	// TODO but it's not needed in the output layer... so why not provide storageSize in ctor?
 	int size = {};
 
 	// storageSize = (size+1) roundup 4
@@ -277,7 +278,7 @@ struct ANN {
 
 			auto & y = k == numLayers-1 ? output : layers[k+1].x;
 			assert(y.storageSize == net.storageSize);
-			assert(y.storageSize == roundup<8>(w.storageSize.x/*storageHeight*/+1));
+			assert(y.storageSize == roundup<8>(w.size.x/*height*/));
 
 			auto const & activation = layer.activation;
 			auto wij = w.v.data();

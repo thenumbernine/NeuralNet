@@ -4,6 +4,7 @@ runtime-sized ANN, runtime-sized matrix
 */
 #include "Tensor/Tensor.h"
 #include "Common/String.h"	// std::ostream << std::vector<>
+#include "Common/Exception.h"
 #include <vector>
 #include <functional>
 #include <cassert>
@@ -210,6 +211,7 @@ struct ANN {
 
 	ANN(std::initializer_list<int> layerSizes) {
 		auto layerSizeIter = layerSizes.begin();
+		if (layerSizeIter == layerSizes.end()) throw Common::Exception() << "cannot construct a network with no layers";
 		auto prevLayerSize = *layerSizeIter;
 		for (++layerSizeIter; layerSizeIter != layerSizes.end(); ++layerSizeIter) {
 			auto & layer = layers.emplace_back(prevLayerSize, *layerSizeIter);
@@ -232,6 +234,7 @@ struct ANN {
 	//identical to intializer_list ctor ... maybe make a templated consolidation
 	ANN(std::vector<int> const & layerSizes) {
 		auto layerSizeIter = layerSizes.begin();
+		if (layerSizeIter == layerSizes.end()) throw Common::Exception() << "cannot construct a network with no layers";
 		auto prevLayerSize = *layerSizeIter;
 		for (++layerSizeIter; layerSizeIter != layerSizes.end(); ++layerSizeIter) {
 			auto & layer = layers.emplace_back(prevLayerSize, *layerSizeIter);

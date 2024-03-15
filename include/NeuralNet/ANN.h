@@ -154,7 +154,7 @@ private:
 	bool useBias = true;
 public:
 	bool getBias() const { return useBias; }
-	void setBias(bool bias) const { 
+	void setBias(bool bias) {
 		useBias = bias;
 		for (int i = 0; i < w.height(); ++i) {
 			w[i][w.width()-1] = Real(bias ? 1 : 0);

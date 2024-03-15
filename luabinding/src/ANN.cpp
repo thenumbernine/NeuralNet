@@ -1,15 +1,15 @@
 // here's me trying to make c++ automated Lua binding
 #include "NeuralNet/ANN.h"
-#include "NeuralNet/Lua/Bind.h"
+#include "LuaCxx/Bind.h"
 
 
 // info for ANN structs:
 
 template<typename Real>
-struct NeuralNet::Lua::Bind<NeuralNet::Vector<Real>>
+struct LuaCxx::Bind<NeuralNet::Vector<Real>>
 :	public BindStructBase<NeuralNet::Vector<Real>>,
 	public IndexAccess<
-		NeuralNet::Lua::Bind<NeuralNet::Vector<Real>>,
+		LuaCxx::Bind<NeuralNet::Vector<Real>>,
 		NeuralNet::Vector<Real>,
 		Real
 	>
@@ -18,7 +18,7 @@ struct NeuralNet::Lua::Bind<NeuralNet::Vector<Real>>
 
 	static constexpr std::string_view strpre = "NeuralNet::Vector<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<NeuralNet::Lua::Bind<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
 
 	static Real & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
@@ -40,10 +40,10 @@ struct NeuralNet::Lua::Bind<NeuralNet::Vector<Real>>
 };
 
 template<typename Real>
-struct NeuralNet::Lua::Bind<NeuralNet::ThinVector<Real>>
+struct LuaCxx::Bind<NeuralNet::ThinVector<Real>>
 :	public BindStructBase<NeuralNet::ThinVector<Real>>,
 	public IndexAccess<
-		NeuralNet::Lua::Bind<NeuralNet::ThinVector<Real>>,
+		LuaCxx::Bind<NeuralNet::ThinVector<Real>>,
 		NeuralNet::ThinVector<Real>,
 		Real
 	>
@@ -53,7 +53,7 @@ struct NeuralNet::Lua::Bind<NeuralNet::ThinVector<Real>>
 
 	static constexpr std::string_view strpre = "NeuralNet::ThinVector<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<NeuralNet::Lua::Bind<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
 
 	static Real & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
@@ -76,10 +76,10 @@ struct NeuralNet::Lua::Bind<NeuralNet::ThinVector<Real>>
 
 
 template<typename Real>
-struct NeuralNet::Lua::Bind<NeuralNet::Matrix<Real>>
+struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 :	public BindStructBase<NeuralNet::Matrix<Real>>,
 	public IndexAccessReadWrite<
-		NeuralNet::Lua::Bind<NeuralNet::Matrix<Real>>,
+		LuaCxx::Bind<NeuralNet::Matrix<Real>>,
 		NeuralNet::Matrix<Real>,
 		Real
 	>
@@ -89,20 +89,20 @@ struct NeuralNet::Lua::Bind<NeuralNet::Matrix<Real>>
 
 	static constexpr std::string_view strpre = "NeuralNet::Matrix<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<NeuralNet::Lua::Bind<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
 
 	// vector needs Elem's metatable initialized
 	static void mtinit(lua_State * L) {
 		Super::mtinit(L);
 
 		//init all subtypes
-		NeuralNet::Lua::Bind<NeuralNet::ThinVector<Real>>::mtinit(L);
+		LuaCxx::Bind<NeuralNet::ThinVector<Real>>::mtinit(L);
 	}
 
 	// create a full-userdata of the ThinVector so that it sticks around when Lua tries to access it
 	static void IndexAccessRead(lua_State * L, Type & o, int i) {
 		lua_newtable(L);
-		luaL_setmetatable(L, NeuralNet::Lua::Bind<NeuralNet::ThinVector<Real>>::mtname.data());
+		luaL_setmetatable(L, LuaCxx::Bind<NeuralNet::ThinVector<Real>>::mtname.data());
 		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 		new(L) NeuralNet::ThinVector(o[i]);
 		lua_rawset(L, -3);
@@ -110,7 +110,7 @@ struct NeuralNet::Lua::Bind<NeuralNet::Matrix<Real>>
 
 	static void IndexAccessWrite(lua_State * L, Type & o, int i) {
 		lua_newtable(L);
-		luaL_setmetatable(L, NeuralNet::Lua::Bind<NeuralNet::ThinVector<Real>>::mtname.data());
+		luaL_setmetatable(L, LuaCxx::Bind<NeuralNet::ThinVector<Real>>::mtname.data());
 		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 		new(L) NeuralNet::ThinVector(o[i]);
 		lua_rawset(L, -3);
@@ -128,13 +128,13 @@ struct NeuralNet::Lua::Bind<NeuralNet::Matrix<Real>>
 
 
 template<typename Real>
-struct NeuralNet::Lua::Bind<NeuralNet::Layer<Real>>
+struct LuaCxx::Bind<NeuralNet::Layer<Real>>
 : public BindStructBase<NeuralNet::Layer<Real>> {
 	using Type = NeuralNet::Layer<Real>;
 
 	static constexpr std::string_view strpre = "NeuralNet::Layer<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<NeuralNet::Lua::Bind<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
 
 	static auto & getFields() {
 		static auto field_x = Field<&Type::x>();
@@ -164,14 +164,14 @@ struct NeuralNet::Lua::Bind<NeuralNet::Layer<Real>>
 };
 
 template<typename Real>
-struct NeuralNet::Lua::Bind<NeuralNet::ANN<Real>>
+struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 : public BindStructBase<NeuralNet::ANN<Real>> {
 	using Super = BindStructBase<NeuralNet::ANN<Real>>;
 	using Type = NeuralNet::ANN<Real>;
 
 	static constexpr std::string_view strpre = "NeuralNet::ANN<";
 	static constexpr std::string_view strsuf = ">";
-	static constexpr std::string_view mtname = join_v<strpre, join_v<NeuralNet::Lua::Bind<Real>::mtname, strsuf>>;
+	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
 
 	// call metatable = create new object
 	// the member object access is lightuserdata i.e. no metatable ,so I'm wrapping it in a Lua table
@@ -190,7 +190,7 @@ struct NeuralNet::Lua::Bind<NeuralNet::ANN<Real>>
 		}
 
 		lua_newtable(L);
-		luaL_setmetatable(L, NeuralNet::Lua::Bind<Type>::mtname.data());
+		luaL_setmetatable(L, LuaCxx::Bind<Type>::mtname.data());
 		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 		new(L) Type(layerSizes);
 		lua_rawset(L, -3);
@@ -254,19 +254,19 @@ struct NeuralNet::Lua::Bind<NeuralNet::ANN<Real>>
 
 #include <stdfloat>
 #if defined(__STDCPP_FLOAT16_T__)
-template<> struct NeuralNet::Lua::Bind<std::float16_t> { static constexpr std::string_view mtname = "std::float16_t"; };
+template<> struct LuaCxx::Bind<std::float16_t> { static constexpr std::string_view mtname = "std::float16_t"; };
 #endif
 #if defined(__STDCPP_FLOAT32_T__)
-template<> struct NeuralNet::Lua::Bind<std::float32_t> { static constexpr std::string_view mtname = "std::float32_t"; };
+template<> struct LuaCxx::Bind<std::float32_t> { static constexpr std::string_view mtname = "std::float32_t"; };
 #endif
 #if defined(__STDCPP_FLOAT64_T__)
-template<> struct NeuralNet::Lua::Bind<std::float64_t> { static constexpr std::string_view mtname = "std::float64_t"; };
+template<> struct LuaCxx::Bind<std::float64_t> { static constexpr std::string_view mtname = "std::float64_t"; };
 #endif
 #if defined(__STDCPP_FLOAT128_T__)
-template<> struct NeuralNet::Lua::Bind<std::float128_t> { static constexpr std::string_view mtname = "std::float128_t"; };
+template<> struct LuaCxx::Bind<std::float128_t> { static constexpr std::string_view mtname = "std::float128_t"; };
 #endif
 #if defined(__STDCPP_BFLOAT16_T__)
-template<> struct NeuralNet::Lua::Bind<std::bfloat16_t> { static constexpr std::string_view mtname = "std::bfloat16_t"; };
+template<> struct LuaCxx::Bind<std::bfloat16_t> { static constexpr std::string_view mtname = "std::bfloat16_t"; };
 #endif
 
 extern "C" {
@@ -297,7 +297,7 @@ int luaopen_NeuralNetLua(lua_State * L) {
 	// if I inline the lambda def then I get "error: use 'template' keyword to treat 'operator ()' as a dependent template name"
 	// so I guess it has to sit here outside the loop
 	auto buildType = [&]<typename T>() constexpr {
-		using Bind = NeuralNet::Lua::Bind<T>;
+		using Bind = LuaCxx::Bind<T>;
 		Bind::mtinit(L);
 		auto name = Bind::mtname;
 		luaL_getmetatable(L, name.data());

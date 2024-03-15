@@ -30,10 +30,16 @@ struct LuaCxx::Bind<NeuralNet::Vector<Real>>
 
 	static auto & getFields() {
 		static auto field_normL1 = Field<&Type::normL1>();
+		static auto field_size = Field<&Type::size>();
+		static auto field_storageSize = Field<&Type::storageSize>();
+		static auto field_v = Field<&Type::v>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
-			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
-			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
 			{"normL1", &field_normL1},
+			
+			// TODO honestly thse shul be read-only or protected or whatever
+			{"size", &field_size},
+			{"storageSize", &field_storageSize},
+			{"v", &field_v},
 		};
 		return fields;
 	}
@@ -65,10 +71,17 @@ struct LuaCxx::Bind<NeuralNet::ThinVector<Real>>
 
 	static auto & getFields() {
 		static auto field_normL1 = Field<&Type::normL1>();
+		static auto field_size = Field<&Type::size>();
+		static auto field_storageSize = Field<&Type::storageSize>();
+		//static auto field_v = Field<&Type::v>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
-			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
-			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
 			{"normL1", &field_normL1},
+			
+			// TODO these should be read-only or protected
+			{"size", &field_size},
+			{"storageSize", &field_storageSize},
+			// TODO raw-pointer exposure?
+			//{"v", &field_v},
 		};
 		return fields;
 	}
@@ -121,7 +134,24 @@ struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 	}
 
 	static auto & getFields() {
-		static std::map<std::string, FieldBase<Type>*> fields;
+		static auto field_normL1 = Field<&Type::normL1>();
+		static auto field_height = Field<&Type::height>();
+		static auto field_width = Field<&Type::width>();
+		static auto field_storageWidth = Field<&Type::storageWidth>();
+		static auto field_v = Field<&Type::v>();
+		//static auto field_size = Field<&Type::size>();
+		//static auto field_storageSize = Field<&Type::storageSize>();
+		static std::map<std::string, FieldBase<Type>*> fields = {
+			{"normL1", &field_normL1},
+			{"height", &field_height},
+			{"width", &field_width},
+			{"storageWidth", &field_storageWidth},
+			// TODO should be read-only / protected
+			{"v", &field_v},
+			// TODO Tensor::int2 wrapped 
+			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
+			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
+		};
 		return fields;
 	}
 };
@@ -143,9 +173,10 @@ struct LuaCxx::Bind<NeuralNet::Layer<Real>>
 		static auto field_net = Field<&Type::net>();
 		static auto field_netErr = Field<&Type::netErr>();
 		static auto field_dw = Field<&Type::dw>();
+		static auto field_getBias = Field<&Type::getBias>();
+		static auto field_setBias = Field<&Type::setBias>();
 		//static auto field_activation = Field<&Type::activation>();
 		//static auto field_activationDeriv = Field<&Type::activationDeriv>();
-		static auto field_getBias = Field<&Type::getBias>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			{"x", &field_x},
 			{"net", &field_net},
@@ -153,11 +184,11 @@ struct LuaCxx::Bind<NeuralNet::Layer<Real>>
 			{"xErr", &field_xErr},
 			{"netErr", &field_netErr},
 			{"dw", &field_dw},
+			{"getBias", &field_getBias},
+			{"setBias", &field_setBias},
 			// needs func wrapper
 			//{"activation", &field_activation},
 			//{"activationDeriv", &field_activationDeriv},
-			// needs method wrapper
-			{"getBias", &field_getBias},
 		};
 		return fields;
 	}

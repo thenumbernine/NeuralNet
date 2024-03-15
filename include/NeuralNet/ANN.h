@@ -154,6 +154,12 @@ private:
 	bool useBias = true;
 public:
 	bool getBias() const { return useBias; }
+	void setBias(bool bias) const { 
+		useBias = bias;
+		for (int i = 0; i < w.height(); ++i) {
+			w[i][w.width()-1] = Real(bias ? 1 : 0);
+		}
+	}
 
 	Layer(int sizeIn, int sizeOut)
 	: 	x(sizeIn),

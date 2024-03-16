@@ -4,8 +4,8 @@ depends:append{
 	'../Common',
 	'../Tensor',
 }
-cppver = 'c++23'	-- for stdfloat ... maybe soon for simd ... and maybe for all those other nifty features ... not working with clang tho
---[[
+--cppver = 'c++23'	-- for stdfloat ... maybe soon for simd ... and maybe for all those other nifty features ... not working with clang tho
+-- [[
 compiler = 'clang++'
 linker = 'clang++'
 --]]

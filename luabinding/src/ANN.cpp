@@ -2,6 +2,27 @@
 #include "NeuralNet/ANN.h"
 #include "LuaCxx/Bind.h"
 
+#include <stdfloat>
+
+#if 1
+#if defined(__STDCPP_FLOAT32_T__)
+template<> struct LuaCxx::Bind<std::float32_t> { static constexpr std::string_view mtname = "std::float32_t"; };
+#endif
+#if defined(__STDCPP_FLOAT64_T__)
+template<> struct LuaCxx::Bind<std::float64_t> { static constexpr std::string_view mtname = "std::float64_t"; };
+#endif
+#if defined(__STDCPP_FLOAT128_T__)
+template<> struct LuaCxx::Bind<std::float128_t> { static constexpr std::string_view mtname = "std::float128_t"; };
+#endif
+#if 1 //these are going slow anyways, unless I want to deal with the avx float16 instructions ... later
+#if defined(__STDCPP_FLOAT16_T__)
+template<> struct LuaCxx::Bind<std::float16_t> { static constexpr std::string_view mtname = "std::float16_t"; };
+#endif
+#if defined(__STDCPP_BFLOAT16_T__)
+template<> struct LuaCxx::Bind<std::bfloat16_t> { static constexpr std::string_view mtname = "std::bfloat16_t"; };
+#endif
+#endif
+#endif
 
 // info for ANN structs:
 
@@ -91,7 +112,7 @@ struct LuaCxx::Bind<NeuralNet::ThinVector<Real>>
 template<typename Real>
 struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 :	public BindStructBase<NeuralNet::Matrix<Real>>,
-	public IndexAccessReadWrite<
+	public IndexAccess<
 		LuaCxx::Bind<NeuralNet::Matrix<Real>>,
 		NeuralNet::Matrix<Real>,
 		Real
@@ -112,24 +133,11 @@ struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 		LuaCxx::Bind<NeuralNet::ThinVector<Real>>::mtinit(L);
 	}
 
-	// create a full-userdata of the ThinVector so that it sticks around when Lua tries to access it
-	static void IndexAccessRead(lua_State * L, Type & o, int i) {
-		lua_newtable(L);
-		luaL_setmetatable(L, LuaCxx::Bind<NeuralNet::ThinVector<Real>>::mtname.data());
-		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
-		new(L) NeuralNet::ThinVector(o[i]);
-		lua_rawset(L, -3);
+	static decltype(auto) IndexAt(lua_State * L, Type & o, int i) {
+		return o[i];
 	}
 
-	static void IndexAccessWrite(lua_State * L, Type & o, int i) {
-		lua_newtable(L);
-		luaL_setmetatable(L, LuaCxx::Bind<NeuralNet::ThinVector<Real>>::mtname.data());
-		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
-		new(L) NeuralNet::ThinVector(o[i]);
-		lua_rawset(L, -3);
-	}
-
-	static int IndexLen(Type & o) {
+	static int IndexLen(Type const & o) {
 		return o.size.x;
 	}
 
@@ -219,9 +227,11 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 		for (int i = 2; i <= nargs; ++i) {
 			layerSizes.push_back(lua_tointeger(L, i));
 		}
+		// TODO try-catch and rethrow-as-Lua-error where you know exceptions are being used?
+		if (layerSizes.empty()) luaL_error(L, "cannot construct a network with no layers");
 
 		lua_newtable(L);
-		luaL_setmetatable(L, LuaCxx::Bind<Type>::mtname.data());
+		setMTSafe(L, LuaCxx::Bind<Type>::mtname.data());
 		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 		new(L) Type(layerSizes);
 		lua_rawset(L, -3);
@@ -283,23 +293,6 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 
 
 
-#include <stdfloat>
-#if defined(__STDCPP_FLOAT16_T__)
-template<> struct LuaCxx::Bind<std::float16_t> { static constexpr std::string_view mtname = "std::float16_t"; };
-#endif
-#if defined(__STDCPP_FLOAT32_T__)
-template<> struct LuaCxx::Bind<std::float32_t> { static constexpr std::string_view mtname = "std::float32_t"; };
-#endif
-#if defined(__STDCPP_FLOAT64_T__)
-template<> struct LuaCxx::Bind<std::float64_t> { static constexpr std::string_view mtname = "std::float64_t"; };
-#endif
-#if defined(__STDCPP_FLOAT128_T__)
-template<> struct LuaCxx::Bind<std::float128_t> { static constexpr std::string_view mtname = "std::float128_t"; };
-#endif
-#if defined(__STDCPP_BFLOAT16_T__)
-template<> struct LuaCxx::Bind<std::bfloat16_t> { static constexpr std::string_view mtname = "std::bfloat16_t"; };
-#endif
-
 extern "C" {
 int luaopen_NeuralNetLua(lua_State * L) {
 	// instanciate as many template types as you want here
@@ -308,9 +301,7 @@ int luaopen_NeuralNetLua(lua_State * L) {
 		NeuralNet::ANN<float>,
 		NeuralNet::ANN<double>,
 		NeuralNet::ANN<long double>
-#if defined(__STDCPP_FLOAT16_T__)
-		,NeuralNet::ANN<std::float16_t>
-#endif
+#if 1
 #if defined(__STDCPP_FLOAT32_T__)
 		,NeuralNet::ANN<std::float32_t>
 #endif
@@ -320,8 +311,14 @@ int luaopen_NeuralNetLua(lua_State * L) {
 #if defined(__STDCPP_FLOAT128_T__)
 		,NeuralNet::ANN<std::float128_t>
 #endif
+#if 1 //these are going slow anyways, unless I want to deal with the avx float16 instructions ... later
+#if defined(__STDCPP_FLOAT16_T__)
+		,NeuralNet::ANN<std::float16_t>
+#endif
 #if defined(__STDCPP_BFLOAT16_T__)
 		,NeuralNet::ANN<std::bfloat16_t>
+#endif
+#endif
 #endif
 	>;
 

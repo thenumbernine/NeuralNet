@@ -94,15 +94,14 @@ struct LuaCxx::Bind<NeuralNet::ThinVector<Real>>
 		static auto field_normL1 = Field<&Type::normL1>();
 		static auto field_size = Field<&Type::size>();
 		static auto field_storageSize = Field<&Type::storageSize>();
-		//static auto field_v = Field<&Type::v>();
+		static auto field_v = Field<&Type::v>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			{"normL1", &field_normL1},
 			
 			// TODO these should be read-only or protected
 			{"size", &field_size},
 			{"storageSize", &field_storageSize},
-			// TODO raw-pointer exposure?
-			//{"v", &field_v},
+			{"v", &field_v},
 		};
 		return fields;
 	}

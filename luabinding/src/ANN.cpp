@@ -215,26 +215,32 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 	// the member object access is lightuserdata i.e. no metatable ,so I'm wrapping it in a Lua table
 	// so for consistency I'll do the same with dense-userdata ...
 	static int mt_ctor(lua_State * L) {
-		// TODO would be nice to abstract this into ctor arg interpretation
-		// then I could move mt_ctor to the BindStructBase parent
-		// 1st arg is the metatable ... or its another ANN
-		// stack: 1st arg should be the mt, since its call operator is the ann ctor
+		// wrap C++ exceptions with Lua errors
+		try {
+			// TODO would be nice to abstract this into ctor arg interpretation
+			// then I could move mt_ctor to the BindStructBase parent
+			// 1st arg is the metatable ... or its another ANN
+			// stack: 1st arg should be the mt, since its call operator is the ann ctor
 
-		// TODO ANN has an initializer_list ctor ... woudl be nice to jsut fwd args like I'm doing for the call wrapper ...
-		int const nargs = lua_gettop(L);
-		std::vector<int> layerSizes;
-		for (int i = 2; i <= nargs; ++i) {
-			layerSizes.push_back(lua_tointeger(L, i));
+			// TODO ANN has an initializer_list ctor ... woudl be nice to just fwd args like I'm doing for the call wrapper ...
+			int const nargs = lua_gettop(L);
+			std::vector<int> layerSizes;
+			for (int i = 2; i <= nargs; ++i) {
+				layerSizes.push_back(lua_tointeger(L, i));
+			}
+
+			lua_newtable(L);
+			setMTSafe(L, LuaCxx::Bind<Type>::mtname.data());
+			lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
+			// hmm, for release only, for long double only, it is crashing upon ANN ctor
+			// yes that's right, even float16 and float128 work.  but not long double.
+			new(L) Type(layerSizes);
+			lua_rawset(L, -3);
+			return 1;
+		} catch (std::exception & e) {
+			luaL_error(L, e.what());
+			throw e;
 		}
-		// TODO try-catch and rethrow-as-Lua-error where you know exceptions are being used?
-		if (layerSizes.empty()) luaL_error(L, "cannot construct a network with no layers");
-
-		lua_newtable(L);
-		setMTSafe(L, LuaCxx::Bind<Type>::mtname.data());
-		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
-		new(L) Type(layerSizes);
-		lua_rawset(L, -3);
-		return 1;
 	}
 
 	static auto & getFields() {

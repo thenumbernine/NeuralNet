@@ -296,7 +296,6 @@ struct ANN {
 
 	int useBatch = 0;	// set to a positive value to accumulate batch weight updates into the dw array
 	int batchCounter = 0;
-	int totalBatchCounter = 0;	//for entertainment
 
 	//would be nice to just initialize a member-ref to layers[0].x
 	// but to od that, i'd need to initialize layers[] in the ctor member list
@@ -552,7 +551,6 @@ struct ANN {
 			}
 		}
 		if (useBatch) {
-			++totalBatchCounter;
 			++batchCounter;
 			if (batchCounter >= useBatch) {
 				updateBatch();

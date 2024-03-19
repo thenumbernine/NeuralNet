@@ -5,8 +5,8 @@ void accuracy() {
 	//NeuralNet::ANN nn{222, 80, 40, 2};
 	NeuralNet::ANN nn{5, 4, 3, 2};
 	for (auto & layer : nn.layers) {
-		layer.activation = [](double x) -> double { return x; };
-		layer.activationDeriv = [](double x, double y) -> double { return 1.; };
+		layer.activation = NeuralNet::Activation<>::get("identity");
+		layer.activationDeriv = NeuralNet::ActivationDeriv<>::get("one");
 	}
 
 	double x = 0;

@@ -13,6 +13,8 @@ runtime-sized ANN, runtime-sized matrix
 
 namespace NeuralNet {
 
+using DefaultReal = double;
+
 // works for powers of 2
 template<int N>
 constexpr inline int roundup(int a) {
@@ -142,16 +144,109 @@ Real tanhDeriv(Real x, Real y) {
 	return 1 - y * y;
 }
 
+//canned functions
+template<typename Real = DefaultReal>
+struct Activation {
+	std::string name;
+	std::function<Real(Real)> f;		//y(x)
+
+	static std::vector<Activation> const & all() {
+		static std::vector<Activation> list = {
+			{"identity", [](Real x) -> Real { return x; }},
+			{"tanh", static_cast<Real(*)(Real)>(std::tanh)},
+			{"poorLinearTanh", [](Real x) -> Real {		// aka 'hard tanh' aka 'clamp ±1'
+				return std::clamp<Real>(x, Real(-1), Real(1));
+			}},
+			{"poorQuadraticTanh", [](Real x) -> Real {
+				return x < Real(-2) ? Real(-1)
+				: (x < Real(0)) ? x * (Real(1) + Real(.25)*x)
+				: (x < Real(2)) ? x * (Real(1) - Real(.25)*x)
+				: Real(1);
+			}},
+			{"poorCubicTanh", [](Real x) -> Real {
+				return x < Real(-2.5) ? Real(-1)
+				: x < Real(0) ? x * (Real(1) + x * (Real(0.32) + x * Real(0.032)))
+				: x < Real(2.5) ? x * (Real(1) + x * (Real(-0.32) + x * Real(0.032)))
+				: Real(1);
+			}},
+			{"ReLU", [](Real x) -> Real { 		// aka 'ramp' aka 'max(x,0)'
+				return std::max<Real>(x, Real(0));
+			}},
+		};
+		return list;
+	}
+
+	// TODO map for look up or nah?
+	static Activation get(std::string const & name) {
+		for (auto const & f : all()) {
+			if (f.name == name) return f;
+		}
+		throw Common::Exception() << "I couldn't find what you were looking for";
+	}
+};
+
+template<typename Real = DefaultReal>
+struct ActivationDeriv {
+	std::string name;
+	std::function<Real(Real, Real)> f;		//dy/dx(x,y)
+
+	static std::vector<ActivationDeriv> const & all() {
+		static std::vector<ActivationDeriv> list = {
+			{"one", [](Real x, Real y) -> Real { return Real(1); }},
+			{"tanhDeriv", tanhDeriv<Real>},
+			{"poorLinearTanhDeriv", [](Real x, Real y) -> Real {	// aka boxcar function
+				return (x >= Real(-1) && x <= Real(1)) ? Real(1) : Real(0);
+			}},
+			{"poorQuadraticTanhDeriv", [](Real x, Real y) -> Real {	// aka triangular function
+				return (x < Real(-2)) ? Real(0)
+				: x < Real(0) ? Real(1) + Real(.5) * x
+				: x < Real(2) ? Real(1) - Real(.5) * x
+				: Real(0);
+			}},
+			{"poorCubicTanhDeriv", [](Real x, Real y) -> Real {
+				return x < Real(-2.5) ? Real(0)
+				: x < Real(0) ? Real(1) + x * (Real(.64) + x * Real(.096))
+				: x < Real(2.5) ? Real(1) + x * (Real(-.64) + x * Real(.096))
+				: Real(0);
+			}},
+			{"ReLUDeriv", [](Real x, Real y) -> Real { 	// aka Heaviside
+				return x < Real(0) ? Real(0) : Real(1);
+			}},
+		};
+		return list;
+	}
+
+	// TODO map for look up or nah?
+	static ActivationDeriv get(std::string const & name) {
+		for (auto const & f : all()) {
+			if (f.name == name) return f;
+		}
+		throw Common::Exception() << "I couldn't find what you were looking for";
+	}
+};
+
 template<typename Real>
 struct Layer {
 	using Vector = NeuralNet::Vector<Real>;
 	using Matrix = NeuralNet::Matrix<Real>;
+	using Activation = NeuralNet::Activation<Real>;
+	using ActivationDeriv = NeuralNet::ActivationDeriv<Real>;
+
 	Vector x, net;			// feed-forward
 	Matrix w;				// weights
 	Vector xErr, netErr;	// back-propagation
 	Matrix dw;				// batch training accumulation
-	std::function<Real(Real)> activation;				//y(x)
-	std::function<Real(Real, Real)> activationDeriv;	//dy/dx(x,y)
+
+	Activation activation;
+	ActivationDeriv activationDeriv;
+	// until I get function read/write working (efficiently) ...
+	void setActivation(std::string const & name) {
+		activation = Activation::get(name);
+	}
+	void setActivationDeriv(std::string const & name) {
+		activationDeriv = ActivationDeriv::get(name);
+	}
+
 private:
 	bool useBias = true;
 public:
@@ -170,8 +265,8 @@ public:
 		xErr(sizeIn),
 		netErr(sizeOut),
 		dw(sizeOut, sizeIn+1),
-		activation(static_cast<Real(*)(Real)>(std::tanh)),
-		activationDeriv(tanhDeriv<Real>)
+		activation(Activation::get("tanh")),
+		activationDeriv(ActivationDeriv::get("tanhDeriv"))
 	{
 		// welp TODO gonna need a setter for that now
 		x.v[sizeIn] = useBias ? 1 : 0;
@@ -180,14 +275,16 @@ public:
 
 //TODO something from stl
 #include <stdlib.h>	//rand()
-template<typename Real = double>
+template<typename Real = DefaultReal>
 Real random() { return (Real)rand() / (Real)RAND_MAX; }
 
-template<typename Real = double>
+template<typename Real = DefaultReal>
 struct ANN {
 	using Vector = NeuralNet::Vector<Real>;
 	using Matrix = NeuralNet::Matrix<Real>;
 	using Layer = NeuralNet::Layer<Real>;
+	using Activation = NeuralNet::Activation<Real>;
+	using ActivationDeriv = NeuralNet::ActivationDeriv<Real>;
 
 	std::vector<Layer> layers;
 	// last-layer feed-forward components
@@ -283,7 +380,7 @@ struct ANN {
 			assert(y.storageSize == net.storageSize);
 			assert(y.storageSize == roundup<8>(w.size.x/*height*/));
 
-			auto const & activation = layer.activation;
+			auto const & activation = layer.activation.f;
 			auto wij = w.v.data();
 			auto xptr = x.v.data();
 			auto const xendptr = xptr + storageWidth;
@@ -335,7 +432,7 @@ struct ANN {
 			auto & layer = layers[k];
 			auto & y = k == numLayers-1 ? output : layers[k+1].x;
 			auto & yErr = k == numLayers-1 ? outputError : layers[k+1].xErr;
-			auto const & activationDeriv = layer.activationDeriv;
+			auto const & activationDeriv = layer.activationDeriv.f;
 			auto const height = layer.w.height();
 			assert(height == y.size);
 			assert(height == layer.netErr.size);

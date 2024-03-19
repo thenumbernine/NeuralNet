@@ -230,7 +230,7 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 			}
 
 			lua_newtable(L);
-			setMTSafe(L, LuaCxx::Bind<Type>::mtname.data());
+			setMTSafe<Type>(L);
 			lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 			// hmm, for release only, for long double only, it is crashing upon ANN ctor
 			// yes that's right, even float16 and float128 work.  but not long double.

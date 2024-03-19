@@ -56,7 +56,7 @@ struct LuaCxx::Bind<NeuralNet::Vector<Real>>
 		static auto field_v = Field<&Type::v>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			{"normL1", &field_normL1},
-			
+
 			// TODO honestly thse shul be read-only or protected or whatever
 			{"size", &field_size},
 			{"storageSize", &field_storageSize},
@@ -97,7 +97,7 @@ struct LuaCxx::Bind<NeuralNet::ThinVector<Real>>
 		static auto field_v = Field<&Type::v>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			{"normL1", &field_normL1},
-			
+
 			// TODO these should be read-only or protected
 			{"size", &field_size},
 			{"storageSize", &field_storageSize},
@@ -125,11 +125,12 @@ struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
 
 	// vector needs Elem's metatable initialized
-	static void mtinit(lua_State * L) {
-		Super::mtinit(L);
-
+	static void getMT(lua_State * L) {
 		//init all subtypes
-		LuaCxx::Bind<NeuralNet::ThinVector<Real>>::mtinit(L);
+		LuaCxx::Bind<NeuralNet::ThinVector<Real>>::getMT(L);
+		lua_pop(L, 1);
+
+		Super::getMT(L);
 	}
 
 	static decltype(auto) IndexAt(lua_State * L, Type & o, int i) {
@@ -155,7 +156,7 @@ struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 			{"storageWidth", &field_storageWidth},
 			// TODO should be read-only / protected
 			{"v", &field_v},
-			// TODO Tensor::int2 wrapped 
+			// TODO Tensor::int2 wrapped
 			//{"size", new Field<&NeuralNet::Vector<Real>::size>()},
 			//{"storageSize", new Field<&NeuralNet::Vector<Real>>()},
 		};
@@ -163,6 +164,47 @@ struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 	}
 };
 
+template<typename Real>
+struct LuaCxx::Bind<NeuralNet::Activation<Real>>
+: public BindStructBase<NeuralNet::Activation<Real>> {
+	using Type = NeuralNet::Activation<Real>;
+
+	static constexpr std::string_view strpre = "NeuralNet::Activation<";
+	static constexpr std::string_view strsuf = ">";
+	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
+
+	static auto & getFields() {
+		static auto field_name = Field<&Type::name>();
+		// needs func wrapper
+		//static auto field_f = Field<&Type::f>();
+		static std::map<std::string, FieldBase<Type>*> fields = {
+			{"name", &field_name},
+			//{"f", &field_f},
+		};
+		return fields;
+	}
+};
+
+template<typename Real>
+struct LuaCxx::Bind<NeuralNet::ActivationDeriv<Real>>
+: public BindStructBase<NeuralNet::ActivationDeriv<Real>> {
+	using Type = NeuralNet::ActivationDeriv<Real>;
+
+	static constexpr std::string_view strpre = "NeuralNet::ActivationDeriv<";
+	static constexpr std::string_view strsuf = ">";
+	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
+
+	static auto & getFields() {
+		static auto field_name = Field<&Type::name>();
+		// needs func wrapper
+		//static auto field_f = Field<&Type::f>();
+		static std::map<std::string, FieldBase<Type>*> fields = {
+			{"name", &field_name},
+			//{"f", &field_f},
+		};
+		return fields;
+	}
+};
 
 template<typename Real>
 struct LuaCxx::Bind<NeuralNet::Layer<Real>>
@@ -182,8 +224,10 @@ struct LuaCxx::Bind<NeuralNet::Layer<Real>>
 		static auto field_dw = Field<&Type::dw>();
 		static auto field_getBias = Field<&Type::getBias>();
 		static auto field_setBias = Field<&Type::setBias>();
-		//static auto field_activation = Field<&Type::activation>();
-		//static auto field_activationDeriv = Field<&Type::activationDeriv>();
+		static auto field_activation = Field<&Type::activation>();
+		static auto field_activationDeriv = Field<&Type::activationDeriv>();
+		static auto field_setActivation = Field<&Type::setActivation>();
+		static auto field_setActivationDeriv = Field<&Type::setActivationDeriv>();
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			{"x", &field_x},
 			{"net", &field_net},
@@ -193,9 +237,10 @@ struct LuaCxx::Bind<NeuralNet::Layer<Real>>
 			{"dw", &field_dw},
 			{"getBias", &field_getBias},
 			{"setBias", &field_setBias},
-			// needs func wrapper
-			//{"activation", &field_activation},
-			//{"activationDeriv", &field_activationDeriv},
+			{"activation", &field_activation},
+			{"activationDeriv", &field_activationDeriv},
+			{"setActivation", &field_setActivation},
+			{"setActivationDeriv", &field_setActivationDeriv},
 		};
 		return fields;
 	}
@@ -230,7 +275,7 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 			}
 
 			lua_newtable(L);
-			setMTSafe<Type>(L);
+			setMT<Type>(L);
 			lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
 			// hmm, for release only, for long double only, it is crashing upon ANN ctor
 			// yes that's right, even float16 and float128 work.  but not long double.
@@ -331,10 +376,8 @@ int luaopen_NeuralNetLua(lua_State * L) {
 	// so I guess it has to sit here outside the loop
 	auto buildType = [&]<typename T>() constexpr {
 		using Bind = LuaCxx::Bind<T>;
-		Bind::mtinit(L);
-		auto name = Bind::mtname;
-		luaL_getmetatable(L, name.data());
-		lua_setfield(L, -2, name.data());
+		Bind::getMT(L);
+		lua_setfield(L, -2, Bind::mtname.data());
 	};
 
 	lua_newtable(L);

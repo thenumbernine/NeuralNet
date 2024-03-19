@@ -301,6 +301,7 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 		static auto field_useBatch = Field<&Type::useBatch>();
 		static auto field_batchCounter = Field<&Type::batchCounter>();
 		static auto field_dilution = Field<&Type::dilution>();
+		static auto field_dropout = Field<&Type::dropout>();
 		// TODO member functions that return refs
 		//static auto field_input = Field<&Type::input>();
 		//static auto field_inputError = Field<&Type::inputError>();
@@ -323,6 +324,7 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 			{"useBatch", &field_useBatch},
 			{"batchCounter", &field_batchCounter},
 			{"dilution", &field_dilution},
+			{"dropout", &field_dropout},
 			//{"input", &field_input},
 			//{"inputError", &field_inputError},
 			{"feedForward", &field_feedForward},

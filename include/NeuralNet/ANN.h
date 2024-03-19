@@ -103,6 +103,7 @@ struct Matrix {
 
 	int height() const { return size.x; }
 	int width() const { return size.y; }
+	int storageHeight() const { return storageSize.x; }
 	int storageWidth() const { return storageSize.y; }
 
 	Matrix() {}
@@ -117,6 +118,7 @@ struct Matrix {
 		auto [height, width] = size;
 		auto [storageHeight, storageWidth] = storageSize;
 		assert(roundup<8>(height) == storageHeight);
+		assert(roundup<8>(width) == storageWidth);
 		Real sum = {};
 		int ij = 0;
 		for (int i = 0; i < height; ++i) {
@@ -278,6 +280,164 @@ public:
 template<typename Real = DefaultReal>
 Real random() { return (Real)rand() / (Real)RAND_MAX; }
 
+
+
+// different kinds of multipliers to the weights upon update
+// One = normal
+// Dropout = filered-per-col (but that means traversing cols first then rows, opposite of memory order)
+// Dilution = randomly applies, so orig order is fine
+
+template<typename Real>
+struct One {
+	static constexpr Real f() { return Real(1); }
+};
+
+// same as Dilution, only a dif class for template specializing
+template<typename Real>
+struct Dropout {
+	Real dropout;
+	Dropout(Real dropout_) : dropout(dropout_) {}
+	Real f() const {
+		return random<Real>() < dropout ? Real(1) : Real(0);
+	}
+};
+
+template<typename Real>
+struct Dilution {
+	Real dilution;
+	Dilution(Real dilution_) : dilution(dilution_) {}
+	Real f() const {
+		return random<Real>() < dilution ? Real(1) : Real(0);
+	}
+};
+
+// by default do row major i.e. inner product mul
+template<typename Real, typename Mul>
+struct BackProp {
+	constexpr static void go(
+		Mul mul,
+		auto const height,
+		auto const width,
+		auto const storageHeight,
+		auto const storageWidth,
+		auto destwptr,
+		auto xptr,
+		auto neterrptr,
+		auto dt
+	) {
+		auto destwij = destwptr;
+		auto xendptr = xptr + storageWidth;
+		auto neterri = neterrptr;
+		auto neterriend = neterri + height;
+		for (; neterri < neterriend; ++neterri) {
+			auto const neterridt = dt * neterri[0];
+			for (auto xj = xptr; xj < xendptr;
+				xj += 8,
+				destwij += 8
+			) {
+				destwij[0] += neterridt * xj[0] * mul.f();
+				destwij[1] += neterridt * xj[1] * mul.f();
+				destwij[2] += neterridt * xj[2] * mul.f();
+				destwij[3] += neterridt * xj[3] * mul.f();
+				destwij[4] += neterridt * xj[4] * mul.f();
+				destwij[5] += neterridt * xj[5] * mul.f();
+				destwij[6] += neterridt * xj[6] * mul.f();
+				destwij[7] += neterridt * xj[7] * mul.f();
+			}
+		}
+	}
+};
+
+// for dropout, skip every randomly masked col, so we gotta reverse our mul loop order
+template<typename Real>
+struct BackProp<Real, Dropout<Real>> {
+	constexpr static void go(
+		Dropout<Real> mul,
+		auto const height,
+		auto const width,
+		auto const storageHeight,
+		auto const storageWidth,
+		auto destwptr,
+		auto xptr,
+		auto neterrptr,
+		auto dt
+	) {
+		for (int j = 0; j < width; ++j) {
+			if (mul.f()) {
+				Real const dt_xj = dt * xptr[j];
+				for (int i = 0; i < storageHeight; i += 8) {
+					destwptr[j + storageWidth * (i + 0)] += dt_xj * neterrptr[i + 0];
+					destwptr[j + storageWidth * (i + 1)] += dt_xj * neterrptr[i + 1];
+					destwptr[j + storageWidth * (i + 2)] += dt_xj * neterrptr[i + 2];
+					destwptr[j + storageWidth * (i + 3)] += dt_xj * neterrptr[i + 3];
+					destwptr[j + storageWidth * (i + 4)] += dt_xj * neterrptr[i + 4];
+					destwptr[j + storageWidth * (i + 5)] += dt_xj * neterrptr[i + 5];
+					destwptr[j + storageWidth * (i + 6)] += dt_xj * neterrptr[i + 6];
+					destwptr[j + storageWidth * (i + 7)] += dt_xj * neterrptr[i + 7];
+				}
+			}
+		}
+	}
+};
+
+template<typename Real, typename Mul>
+struct UpdateBatch {
+	constexpr static void go(
+		Mul mul,
+		auto const height,
+		auto const width,
+		auto const storageHeight,
+		auto const storageWidth,
+		auto wptr,
+		auto dwptr
+	) {
+		auto wijptr = wptr;
+		auto dwijptr = dwptr;
+		auto wijendptr = wijptr + storageWidth * height;
+		for (; wijptr < wijendptr;
+			wijptr += 8,
+			dwijptr += 8
+		) {
+			wijptr[0] += dwijptr[0] * mul.f();
+			wijptr[1] += dwijptr[1] * mul.f();
+			wijptr[2] += dwijptr[2] * mul.f();
+			wijptr[3] += dwijptr[3] * mul.f();
+			wijptr[4] += dwijptr[4] * mul.f();
+			wijptr[5] += dwijptr[5] * mul.f();
+			wijptr[6] += dwijptr[6] * mul.f();
+			wijptr[7] += dwijptr[7] * mul.f();
+		}
+	}
+};
+
+template<typename Real>
+struct UpdateBatch<Real, Dropout<Real>> {
+	constexpr static void go(
+		Dropout<Real> mul,
+		auto const height,
+		auto const width,
+		auto const storageHeight,
+		auto const storageWidth,
+		auto wptr,
+		auto dwptr
+	) {
+		for (int j = 0; j < width; ++j) {
+			if (mul.f()) {
+				for (int i = 0; i < storageHeight; i += 8) {
+					wptr[j + storageWidth * (i + 0)] += dwptr[i + storageWidth * (i + 0)];
+					wptr[j + storageWidth * (i + 1)] += dwptr[i + storageWidth * (i + 1)];
+					wptr[j + storageWidth * (i + 2)] += dwptr[i + storageWidth * (i + 2)];
+					wptr[j + storageWidth * (i + 3)] += dwptr[i + storageWidth * (i + 3)];
+					wptr[j + storageWidth * (i + 4)] += dwptr[i + storageWidth * (i + 4)];
+					wptr[j + storageWidth * (i + 5)] += dwptr[i + storageWidth * (i + 5)];
+					wptr[j + storageWidth * (i + 6)] += dwptr[i + storageWidth * (i + 6)];
+					wptr[j + storageWidth * (i + 7)] += dwptr[i + storageWidth * (i + 7)];
+				}
+			}
+		}
+	}
+};
+
 template<typename Real = DefaultReal>
 struct ANN {
 	using Vector = NeuralNet::Vector<Real>;
@@ -294,10 +454,13 @@ struct ANN {
 
 	//timestep of the gradient to forward-Euler integrate along
 	Real dt = 1;
-	
+
 	int useBatch = 0;	// set to a positive value to accumulate batch weight updates into the dw array
 	int batchCounter = 0;
-	
+
+	// what %age of the weight columns to update per-back-propagation / batch-update
+	Real dropout = 1;
+
 	// what %age of the weights to update per-back-propagation / batch-update
 	Real dilution = 1;
 
@@ -428,16 +591,6 @@ struct ANN {
 		return Real(.5) * s;
 	}
 
-	struct One {
-	static constexpr Real f() { return Real(1); }
-	};
-	
-	struct Dilution {
-	Real dilution;
-	Dilution(Real dilution_) : dilution(dilution_) {}
-	Real f() { return random<Real>() < dilution ? Real(1) : Real(0); }
-	};
-
 	template<typename Mul>
 	void backPropagateWithPerWeightMul(Real dt, Mul mul) {
 		int const numLayers = (int)layers.size();
@@ -514,57 +667,24 @@ struct ANN {
 #endif
 
 			// adjust new weights
-			auto const storageWidth = layer.w.storageWidth();
 			assert(layer.x[layer.x.size] == layer.getBias() ? 1 : 0);
-			if (!useBatch) {
-				// ... directly/immediately
-				auto wij = layer.w.v.data();
-				auto xptr = layer.x.v.data();
-				auto xendptr = xptr + storageWidth;
-				auto neterri = layer.netErr.v.data();
-				auto neterriend = neterri + height;
-				for (; neterri < neterriend; ++neterri) {
-					auto const neterridt = dt * neterri[0];
-					for (auto xj = xptr; xj < xendptr;
-						xj += 8,
-						wij += 8
-					) {
-						wij[0] += neterridt * xj[0] * mul.f();
-						wij[1] += neterridt * xj[1] * mul.f();
-						wij[2] += neterridt * xj[2] * mul.f();
-						wij[3] += neterridt * xj[3] * mul.f();
-						wij[4] += neterridt * xj[4] * mul.f();
-						wij[5] += neterridt * xj[5] * mul.f();
-						wij[6] += neterridt * xj[6] * mul.f();
-						wij[7] += neterridt * xj[7] * mul.f();
-					}
-				}
-			} else {
-				// ... accumulate into dw
-				auto dwij = layer.dw.v.data();
-				auto xptr = layer.x.v.data();
-				auto xendptr = xptr + storageWidth;
-				auto neterri = layer.netErr.v.data();
-				auto neterriend = neterri + height;
-				for (; neterri < neterriend; ++neterri) {
-					auto const neterridt = neterri[0] * dt;
-					for (auto xj = xptr; xj < xendptr;
-						xj += 8,
-						dwij += 8
-					) {
-						dwij[0] += neterridt * xj[0];
-						dwij[1] += neterridt * xj[1];
-						dwij[2] += neterridt * xj[2];
-						dwij[3] += neterridt * xj[3];
-						dwij[4] += neterridt * xj[4];
-						dwij[5] += neterridt * xj[5];
-						dwij[6] += neterridt * xj[6];
-						dwij[7] += neterridt * xj[7];
-					}
-				}
+			{
+				BackProp<Real, Mul>::go(
+					mul,
+					layer.w.height(),
+					layer.w.width(),
+					layer.w.storageHeight(),
+					layer.w.storageWidth(),
+					useBatch 				//destwptr
+						? layer.dw.v.data() 	// ... accumulate into dw
+						: layer.w.v.data(),		// ... directly/immediately
+					layer.x.v.data(),		//xptr
+					layer.netErr.v.data(),	//neterrptr
+					dt
+				);
 			}
 		}
-		
+
 		if (useBatch) {
 			++batchCounter;
 			if (batchCounter >= useBatch) {
@@ -573,15 +693,17 @@ struct ANN {
 			}
 		}
 	}
-	void backPropagate(Real dt) { 
-		if (dilution == Real(1)) {
-			backPropagateWithPerWeightMul<One>(dt, One()); 
-		} else {
-			backPropagateWithPerWeightMul<Dilution>(dt, Dilution(dilution)); 
+	void backPropagate(Real dt) {
+		if (dropout == Real(1) && dilution == Real(1)) {
+			backPropagateWithPerWeightMul<One<Real>>(dt, One<Real>());
+		} else if (dropout != Real(1)) {
+			backPropagateWithPerWeightMul<Dropout<Real>>(dt, Dropout<Real>(dropout));
+		} else {	// with dilution
+			backPropagateWithPerWeightMul<Dilution<Real>>(dt, Dilution<Real>(dilution));
 		}
 	}
-	void backPropagate() { 
-		backPropagate(dt); 
+	void backPropagate() {
+		backPropagate(dt);
 	}
 
 	// update weights by batch ... and then clear the batch
@@ -590,30 +712,25 @@ struct ANN {
 		if (!useBatch) return;
 		for (int k = (int)layers.size()-1; k >= 0; --k) {
 			auto & layer = layers[k];
-			auto wijptr = layer.w.v.data();
-			auto wijendptr = wijptr + layer.w.storageSize.product();
-			auto dwijptr = layer.dw.v.data();
-			for (; wijptr < wijendptr;
-				wijptr += 8,
-				dwijptr += 8
-			) {
-				wijptr[0] += dwijptr[0];
-				wijptr[1] += dwijptr[1];
-				wijptr[2] += dwijptr[2];
-				wijptr[3] += dwijptr[3];
-				wijptr[4] += dwijptr[4];
-				wijptr[5] += dwijptr[5];
-				wijptr[6] += dwijptr[6];
-				wijptr[7] += dwijptr[7];
-			}
+			UpdateBatch<Real, Mul>::go(
+				mul,
+				layer.w.height(),
+				layer.w.width(),
+				layer.w.storageHeight(),
+				layer.w.storageWidth(),
+				layer.w.v.data(),	//wptr
+				layer.dw.v.data()	//dwptr
+			);
 		}
 		clearBatch();
 	}
 	void updateBatch() {
-		if (dilution == Real(1)) {
-			backPropagateWithPerWeightMul<One>(dt, One()); 
+		if (dropout == Real(1) && dilution == Real(1)) {
+			updateBatchWithPerWeightMul<One<Real>>(One<Real>());
+		} else if (dropout != Real(1)) {
+			updateBatchWithPerWeightMul<Dropout<Real>>(Dropout<Real>(dropout));
 		} else {
-			backPropagateWithPerWeightMul<Dilution>(dt, Dilution(dilution)); 
+			updateBatchWithPerWeightMul<Dilution<Real>>(Dilution<Real>(dilution));
 		}
 	}
 

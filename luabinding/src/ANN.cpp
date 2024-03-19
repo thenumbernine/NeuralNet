@@ -300,6 +300,7 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 		static auto field_dt = Field<&Type::dt>();
 		static auto field_useBatch = Field<&Type::useBatch>();
 		static auto field_batchCounter = Field<&Type::batchCounter>();
+		static auto field_dilution = Field<&Type::dilution>();
 		// TODO member functions that return refs
 		//static auto field_input = Field<&Type::input>();
 		//static auto field_inputError = Field<&Type::inputError>();
@@ -321,17 +322,14 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 			{"dt", &field_dt},
 			{"useBatch", &field_useBatch},
 			{"batchCounter", &field_batchCounter},
-
+			{"dilution", &field_dilution},
 			//{"input", &field_input},
 			//{"inputError", &field_inputError},
 			{"feedForward", &field_feedForward},
 			{"calcError", &field_calcError},
-
 			{"backPropagate", &field_backPropagate},
-
 			// TODO would be nice for the binding to also handle overloads ... maybe some day
 			{"backPropagate_dt", &field_backPropagate_dt},
-
 			{"updateBatch", &field_updateBatch},
 			{"clearBatch", &field_clearBatch},
 		};

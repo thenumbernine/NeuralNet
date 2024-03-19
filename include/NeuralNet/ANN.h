@@ -292,10 +292,14 @@ struct ANN {
 	// used for training:
 	Vector desired;
 
+	//timestep of the gradient to forward-Euler integrate along
 	Real dt = 1;
-
+	
 	int useBatch = 0;	// set to a positive value to accumulate batch weight updates into the dw array
 	int batchCounter = 0;
+	
+	// what %age of the weights to update per-back-propagation / batch-update
+	Real dilution = 1;
 
 	//would be nice to just initialize a member-ref to layers[0].x
 	// but to od that, i'd need to initialize layers[] in the ctor member list
@@ -424,8 +428,18 @@ struct ANN {
 		return Real(.5) * s;
 	}
 
-	void backPropagate() { backPropagate(dt); }
-	void backPropagate(Real dt) {
+	struct One {
+	static constexpr Real f() { return Real(1); }
+	};
+	
+	struct Dilution {
+	Real dilution;
+	Dilution(Real dilution_) : dilution(dilution_) {}
+	Real f() { return random<Real>() < dilution ? Real(1) : Real(0); }
+	};
+
+	template<typename Mul>
+	void backPropagateWithPerWeightMul(Real dt, Mul mul) {
 		int const numLayers = (int)layers.size();
 		for (int k = (int)numLayers-1; k >= 0; --k) {
 			auto & layer = layers[k];
@@ -515,14 +529,14 @@ struct ANN {
 						xj += 8,
 						wij += 8
 					) {
-						wij[0] += neterridt * xj[0];
-						wij[1] += neterridt * xj[1];
-						wij[2] += neterridt * xj[2];
-						wij[3] += neterridt * xj[3];
-						wij[4] += neterridt * xj[4];
-						wij[5] += neterridt * xj[5];
-						wij[6] += neterridt * xj[6];
-						wij[7] += neterridt * xj[7];
+						wij[0] += neterridt * xj[0] * mul.f();
+						wij[1] += neterridt * xj[1] * mul.f();
+						wij[2] += neterridt * xj[2] * mul.f();
+						wij[3] += neterridt * xj[3] * mul.f();
+						wij[4] += neterridt * xj[4] * mul.f();
+						wij[5] += neterridt * xj[5] * mul.f();
+						wij[6] += neterridt * xj[6] * mul.f();
+						wij[7] += neterridt * xj[7] * mul.f();
 					}
 				}
 			} else {
@@ -550,6 +564,7 @@ struct ANN {
 				}
 			}
 		}
+		
 		if (useBatch) {
 			++batchCounter;
 			if (batchCounter >= useBatch) {
@@ -558,9 +573,20 @@ struct ANN {
 			}
 		}
 	}
+	void backPropagate(Real dt) { 
+		if (dilution == Real(1)) {
+			backPropagateWithPerWeightMul<One>(dt, One()); 
+		} else {
+			backPropagateWithPerWeightMul<Dilution>(dt, Dilution(dilution)); 
+		}
+	}
+	void backPropagate() { 
+		backPropagate(dt); 
+	}
 
 	// update weights by batch ... and then clear the batch
-	void updateBatch() {
+	template<typename Mul>
+	void updateBatchWithPerWeightMul(Mul mul) {
 		if (!useBatch) return;
 		for (int k = (int)layers.size()-1; k >= 0; --k) {
 			auto & layer = layers[k];
@@ -582,6 +608,13 @@ struct ANN {
 			}
 		}
 		clearBatch();
+	}
+	void updateBatch() {
+		if (dilution == Real(1)) {
+			backPropagateWithPerWeightMul<One>(dt, One()); 
+		} else {
+			backPropagateWithPerWeightMul<Dilution>(dt, Dilution(dilution)); 
+		}
 	}
 
 	void clearBatch() {

@@ -43,6 +43,10 @@ struct LuaCxx::Bind<NeuralNet::Vector<Real>>
 
 	// identical to ThinVector<Real> and Matrix<Real>
 	static int mt_ctor(lua_State * L) {
+		// TODO detect args and ctor pattern match
+		// TODO think of a similar way to do the same thing with the fields
+		// TODO no wonder name mangling exists, and what a pain...
+		// here's the copy ctor
 		auto src = lua_getptr<Type>(L, 1);
 		lua_newtable(L);
 		setMT<Type>(L);

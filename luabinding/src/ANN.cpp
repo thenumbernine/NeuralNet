@@ -41,6 +41,17 @@ struct LuaCxx::Bind<NeuralNet::Vector<Real>>
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
 
+	// identical to ThinVector<Real> and Matrix<Real>
+	static int mt_ctor(lua_State * L) {
+		auto src = lua_getptr<Type>(L, 1);
+		lua_newtable(L);
+		setMT<Type>(L);
+		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
+		new(L) Type(*src);
+		lua_rawset(L, -3);
+		return 1;
+	}
+
 	static Real & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
 	}
@@ -81,6 +92,17 @@ struct LuaCxx::Bind<NeuralNet::ThinVector<Real>>
 	static constexpr std::string_view strpre = "NeuralNet::ThinVector<";
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
+
+	// identical to Matrix<Real>
+	static int mt_ctor(lua_State * L) {
+		auto src = lua_getptr<Type>(L, 1);
+		lua_newtable(L);
+		setMT<Type>(L);
+		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
+		new(L) Type(*src);
+		lua_rawset(L, -3);
+		return 1;
+	}
 
 	static Real & IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
@@ -123,6 +145,21 @@ struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 	static constexpr std::string_view strpre = "NeuralNet::Matrix<";
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
+
+	static int mt_ctor(lua_State * L) {
+		// TODO cast templates?  fallback on templated cast ctor in Matrix?
+		// TODO lua_optget that returns null if it's not of type Type
+		//  and then only if Type is present use it for the copy ctor ...
+		//  do some ctor pattern matching Lua<->C++ somehow.
+		auto src = lua_getptr<Type>(L, 1);
+
+		lua_newtable(L);
+		setMT<Type>(L);
+		lua_pushliteral(L, LUACXX_BIND_PTRFIELD);
+		new(L) Type(*src);
+		lua_rawset(L, -3);
+		return 1;
+	}
 
 	static decltype(auto) IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
@@ -237,6 +274,19 @@ struct LuaCxx::Bind<NeuralNet::Layer<Real>>
 	}
 };
 
+// the equivalent of these goes in the Lua ANN class
+// I could move them there ... meh
+template<typename Real>
+static NeuralNet::Vector<Real> newVector(int h) {
+	return NeuralNet::Vector<Real>(h);
+}
+
+template<typename Real>
+static NeuralNet::Matrix<Real> newMatrix(int h, int w) {
+	return NeuralNet::Matrix<Real>(h, w);
+}
+
+
 template<typename Real>
 struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 : public BindStructBase<NeuralNet::ANN<Real>> {
@@ -306,6 +356,16 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 		>();
 		static auto field_updateBatch = Field<&Type::updateBatch>();
 		static auto field_clearBatch = Field<&Type::clearBatch>();
+
+		// This is the ANN API and maybe will be pushed back into matrix:clone() of whatever the underlying matrix API is (Lua matrix vs Lua matrix.ffi vs C++ NeuralNet::Matrix)
+		// TODO newMatrix(int) vs newMatrix(int, int) support ...
+		// same with backPropagate() vs (Real) ...
+		// need overloading pattern matching support or something
+		// until then ...
+		// TODO if it was really a static, I'd pass <Type, &Type::newVector>
+		static auto field_newVector = FieldStatic<Type, newVector<Real>>();
+		static auto field_newMatrix = FieldStatic<Type, newMatrix<Real>>();
+
 		static std::map<std::string, FieldBase<Type>*> fields = {
 			{"layers", &field_layers},
 			{"output", &field_output},
@@ -325,7 +385,9 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 			{"backPropagate_dt", &field_backPropagate_dt},
 			{"updateBatch", &field_updateBatch},
 			{"clearBatch", &field_clearBatch},
+			{"newMatrix", &field_newMatrix},
 		};
+
 		return fields;
 	}
 };
@@ -338,8 +400,8 @@ int luaopen_NeuralNetLua(lua_State * L) {
 	// don't be shy, add some int types while you're at it
 	using types = std::tuple<
 		NeuralNet::ANN<float>,
-		NeuralNet::ANN<double>,
-		NeuralNet::ANN<long double>
+		NeuralNet::ANN<double>
+//		NeuralNet::ANN<long double>
 #if 1
 #if defined(__STDCPP_FLOAT32_T__)
 		,NeuralNet::ANN<std::float32_t>

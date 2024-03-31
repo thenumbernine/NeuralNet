@@ -363,6 +363,7 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 		// need overloading pattern matching support or something
 		// until then ...
 		// TODO if it was really a static, I'd pass <Type, &Type::newVector>
+		// also TODO ... don't do this.  Just the mt-as-ctor, and expose the mt in the library table.
 		static auto field_newVector = FieldStatic<Type, newVector<Real>>();
 		static auto field_newMatrix = FieldStatic<Type, newMatrix<Real>>();
 
@@ -385,6 +386,8 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 			{"backPropagate_dt", &field_backPropagate_dt},
 			{"updateBatch", &field_updateBatch},
 			{"clearBatch", &field_clearBatch},
+			// statics or sort of ... they're statics in the Lua classes ...
+			{"newVector", &field_newVector},
 			{"newMatrix", &field_newMatrix},
 		};
 
@@ -393,48 +396,56 @@ struct LuaCxx::Bind<NeuralNet::ANN<Real>>
 };
 
 
+// if I inline the lambda def then I get "error: use 'template' keyword to treat 'operator ()' as a dependent template name"
+// so I guess it has to sit here outside the loop
+template<typename T>
+constexpr auto buildType(lua_State * L) {
+	using Bind = LuaCxx::Bind<T>;
+	Bind::getMT(L);
+	lua_setfield(L, -2, Bind::mtname.data());
+}
+
+template<typename Real>
+constexpr auto buildTypesForReal(lua_State * L) {
+	{ using T = NeuralNet::ANN<Real>; buildType<T>(L); }
+	{ using T = NeuralNet::Vector<Real>; buildType<T>(L); }
+	{ using T = NeuralNet::ThinVector<Real>; buildType<T>(L); }
+	{ using T = NeuralNet::Matrix<Real>; buildType<T>(L); }
+}
 
 extern "C" {
 int luaopen_NeuralNetLua(lua_State * L) {
 	// instanciate as many template types as you want here
 	// don't be shy, add some int types while you're at it
-	using types = std::tuple<
-		NeuralNet::ANN<float>,
-		NeuralNet::ANN<double>
-//		NeuralNet::ANN<long double>
+	using Reals = std::tuple<
+		float,
+		double,
+		long double
 #if 1
 #if defined(__STDCPP_FLOAT32_T__)
-		,NeuralNet::ANN<std::float32_t>
+		,std::float32_t
 #endif
 #if defined(__STDCPP_FLOAT64_T__)
-		,NeuralNet::ANN<std::float64_t>
+		,std::float64_t
 #endif
 #if defined(__STDCPP_FLOAT128_T__)
-		,NeuralNet::ANN<std::float128_t>
+		,std::float128_t
 #endif
 #if 1 //these are going slow anyways, unless I want to deal with the avx float16 instructions ... later
 #if defined(__STDCPP_FLOAT16_T__)
-		,NeuralNet::ANN<std::float16_t>
+		,std::float16_t
 #endif
 #if defined(__STDCPP_BFLOAT16_T__)
-		,NeuralNet::ANN<std::bfloat16_t>
+		,std::bfloat16_t
 #endif
 #endif
 #endif
 	>;
 
-	// if I inline the lambda def then I get "error: use 'template' keyword to treat 'operator ()' as a dependent template name"
-	// so I guess it has to sit here outside the loop
-	auto buildType = [&]<typename T>() constexpr {
-		using Bind = LuaCxx::Bind<T>;
-		Bind::getMT(L);
-		lua_setfield(L, -2, Bind::mtname.data());
-	};
-
 	lua_newtable(L);
 	[&]<auto...j>(std::index_sequence<j...>) constexpr {
-		(buildType.operator()<std::tuple_element_t<j, types>>(), ...);
-	}(std::make_index_sequence<std::tuple_size_v<types>>{});
+		(buildTypesForReal<std::tuple_element_t<j, Reals>>(L), ...);
+	}(std::make_index_sequence<std::tuple_size_v<Reals>>{});
 	return 1;
 }
 }

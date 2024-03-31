@@ -124,15 +124,6 @@ struct LuaCxx::Bind<NeuralNet::Matrix<Real>>
 	static constexpr std::string_view strsuf = ">";
 	static constexpr std::string_view mtname = Common::join_v<strpre, LuaCxx::Bind<Real>::mtname, strsuf>;
 
-	// vector needs Elem's metatable initialized
-	static void getMT(lua_State * L) {
-		//init all subtypes
-		LuaCxx::Bind<NeuralNet::ThinVector<Real>>::getMT(L);
-		lua_pop(L, 1);
-
-		Super::getMT(L);
-	}
-
 	static decltype(auto) IndexAt(lua_State * L, Type & o, int i) {
 		return o[i];
 	}

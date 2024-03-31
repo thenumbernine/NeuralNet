@@ -15,8 +15,15 @@ namespace NeuralNet {
 
 using DefaultReal = double;
 
+constexpr bool ispowerof2(int N) {
+	return N > 0 && 
+		//N & (N - 1) == 0;	//is this a power-of-2 test?
+		(N | (N - 1)) == 2 * N - 1;	// better power-of-2 test?
+}
+
 // works for powers of 2
 template<int N>
+requires (ispowerof2(N))
 constexpr inline int roundup(int a) {
 	return (a + N) & (-N);
 }
@@ -156,6 +163,7 @@ struct Activation {
 		static std::vector<Activation> list = {
 			{"identity", [](Real x) -> Real { return x; }},
 			{"tanh", static_cast<Real(*)(Real)>(std::tanh)},
+			{"sigmoid", [](Real x) -> Real { return Real(1) / (Real(1) + std::exp(-x)); }},
 			{"poorLinearTanh", [](Real x) -> Real {		// aka 'hard tanh' aka 'clamp ±1'
 				return std::clamp<Real>(x, Real(-1), Real(1));
 			}},
@@ -196,6 +204,7 @@ struct ActivationDeriv {
 		static std::vector<ActivationDeriv> list = {
 			{"one", [](Real x, Real y) -> Real { return Real(1); }},
 			{"tanhDeriv", tanhDeriv<Real>},
+			{"sigmoidDeriv", [](Real x, Real y) -> Real { return y * (Real(1) - y); }},
 			{"poorLinearTanhDeriv", [](Real x, Real y) -> Real {	// aka boxcar function
 				return (x >= Real(-1) && x <= Real(1)) ? Real(1) : Real(0);
 			}},

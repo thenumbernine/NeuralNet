@@ -2,6 +2,7 @@
 #include "NeuralNet/ANN.h"
 #include "LuaCxx/Bind.h"
 
+#if !defined(PLATFORM_OSX) // hmm, osx clang c++23 doesn't have <stdfloat> ...
 #include <stdfloat>
 
 #if 1
@@ -20,6 +21,7 @@ template<> struct LuaCxx::Bind<std::float16_t> { static constexpr std::string_vi
 #endif
 #if defined(__STDCPP_BFLOAT16_T__)
 template<> struct LuaCxx::Bind<std::bfloat16_t> { static constexpr std::string_view mtname = "std::bfloat16_t"; };
+#endif
 #endif
 #endif
 #endif
@@ -425,6 +427,7 @@ int luaopen_NeuralNetLua(lua_State * L) {
 		float,
 		double,
 		long double
+#if !defined(PLATFORM_OSX) // hmm, osx clang c++23 doesn't have <stdfloat> ...
 #if 1
 #if defined(__STDCPP_FLOAT32_T__)
 		,std::float32_t
@@ -441,6 +444,7 @@ int luaopen_NeuralNetLua(lua_State * L) {
 #endif
 #if defined(__STDCPP_BFLOAT16_T__)
 		,std::bfloat16_t
+#endif
 #endif
 #endif
 #endif

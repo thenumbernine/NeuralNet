@@ -2,7 +2,8 @@ This is Lua bindings for the NeuralNet library.
 It's designed to have an API that matches the `neuralnet` lua project.
 That means 1-based indexes.  yes.
 
-- `ANN = require 'NeuralNetLua'` = get the ctor.
+- `ANN = require 'NeuralNetLua' 'NeuralNet::ANN<float>'` = get the float ctor.
+- `ANN = require 'NeuralNetLua' 'NeuralNet::ANN<double>'` = get the double ctor.
 - `ann = ANN(layer1, ..., layerN)` = function (table? class?) that constructs an ANN object.
 - `ann.dt`
 - `ann.layers[]`

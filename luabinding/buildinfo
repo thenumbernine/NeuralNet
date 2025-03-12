@@ -11,3 +11,12 @@ cppver = 'c++23'	-- for stdfloat ... maybe soon for simd ... and maybe for all t
 compiler = 'clang++'
 linker = 'clang++'
 --]]
+
+function postBuildDist()
+	if platform == 'osx' then
+		-- on OSX I'm getting the error, "Reason: no LC_RPATH's found" ... does that mean I need this?  or should I set the rpath to LD_LIBRARY_PATH or whatever the default is? can I do that?
+		--os.exec('install_name_tool -add_rpath @executable_path/. '..env:getDist())	-- @executable_path looks in /usr/local/bin/
+		os.exec('install_name_tool -add_rpath @loader_path/. '..env:getDist())	-- @loader_path looks in /usr/local/lib/lua/5.1/ (which is where the `require` path for the .so file is found ... so now I have to move not just libNeuralNet.dylib there but *EVERY LIBRARY IT IS DEPENDENT UPON TOO* .... makes me tempted to hardcode it at /usr/local/lib/ ...
+	end
+end
+

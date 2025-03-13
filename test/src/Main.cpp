@@ -97,7 +97,64 @@ void performance() {
 	});
 }
 
+#if 0  // unit tests
+	{
+		static constexpr myint m = 15;
+		static constexpr myint n = 15;
+		auto nn = NeuralNet::ANN<real>{m,n};
+		nn.layers[0].setBias(false);
+
+		// test that w[j][i] alone works
+		for (int i = 0; i < m; ++i) {
+			for (int j = 0; j < n; ++j) {
+				// y_j = w_ji x_i
+
+				// set only w[i][j], i.e. w[k][l] = δ_ik δ_jl
+				for (int k = 0; k < m; ++k) {
+					for (int l = 0; l < n; ++l) {
+						nn.layers[0].w[l][k] = i == k && j == l ? 1 : 0;
+					}
+				}
+
+				// make sure for all inputs k, it only produces output[j] for when k==i and zero otherwise
+				for (int k = 0; k < m; ++k) {
+					// set only x_k, i.e. x_l = δ_kl
+					for (int l = 0; l < m; ++l) {
+						nn.input()[l] = k == l ? 1 : 0;
+					}
+
+					// for the weight w_ij being set (and all others zero)
+					// we expect x_i to be set => y_j to be set (and all other input/output's zero)
+
+					nn.feedForward();
+				
+					for (int l = 0; l < n; ++l) {
+						real expected = i == k && j == l ? 1 : 0;
+						if (nn.layers[0].net[l] != expected) {
+							std::cerr
+								<< " i=" << i
+								<< " j=" << j
+								<< " k=" << k
+								<< " l=" << l
+								<< " ...";
+							std::cerr << " got bad value"
+								<< " expected=" << expected
+								<< " got=" << nn.layers[0].net[l]
+								<< std::endl;
+							std::cerr << "x=" << nn.input() << std::endl;
+							std::cerr << "w=" << nn.layers[0].w << std::endl;
+							std::cerr << "y=" << nn.layers[0].net << std::endl;
+							std::cerr << std::endl;
+						}
+					}
+				}
+			}
+		}
+		return 0;
+	}
+#endif
+
 int main() {
-//	accuracy();
+	accuracy();
 	performance();
 }

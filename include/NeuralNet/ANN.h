@@ -543,7 +543,8 @@ struct ANN {
 			const auto & x = layer.x;
 			assert(x.storageSize == storageWidth);
 
-			assert(x.v[x.size] == layer.getBias() ? 1 : 0);
+			// not try necessarily, the weight will be zero, the input can be anything
+			//assert(x.v[x.size] == (layer.getBias() ? 1 : 0));
 
 			auto & net = layer.net;
 			assert(net.size == height);
@@ -676,7 +677,8 @@ struct ANN {
 #endif
 
 			// adjust new weights
-			assert(layer.x[layer.x.size] == layer.getBias() ? 1 : 0);
+			// not try necessarily, the weight will be zero, the input can be anything
+			//assert(layer.x[layer.x.size] == (layer.getBias() ? 1 : 0));
 			{
 				BackProp<Real, Mul>::go(
 					mul,

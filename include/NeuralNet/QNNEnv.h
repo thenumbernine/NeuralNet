@@ -161,6 +161,7 @@ struct QNNEnv {
 
 		// reset condition TODO where to put this ...
 		if (reset) {
+			history.clear();
 			state = Controller::initState();
 		}
 

@@ -191,6 +191,7 @@ int main(int argc, char** argv) {
 	env.alpha = .1;
 	env.gamma = .9;
 	env.lambda = .7;
+	env.noise = 1e-5;
 	env.historySize = 10;
 
 	//env.run();
